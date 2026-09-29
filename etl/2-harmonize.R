@@ -2,6 +2,7 @@
 library(dplyr)
 library(readr)
 library(govhr)
+library(furrr)
 library(here)
 
 source(
@@ -25,7 +26,9 @@ years <- funcionarios_files |>
   as.integer() |>
   unique()
 
-years[1] |>
-  purrr::walk(
+plan(multisession, workers = 4)
+
+years |>
+  furrr::future_walk(
     harmonize_hr
   )
