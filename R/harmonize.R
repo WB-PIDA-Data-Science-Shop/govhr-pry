@@ -1,4 +1,4 @@
-harmonize_hr <- function(year){
+harmonize_hr <- function(year, db_path){
   funcionarios <- funcionarios_files |>
     stringr::str_subset(
       as.character(year)
@@ -12,7 +12,7 @@ harmonize_hr <- function(year){
       col_select = c(
         anho, mes,
         nivel, descripcion_nivel, entidad, descripcion_entidad, oee, descripcion_oee,
-        documento, fecha_nacimiento, anho_ingreso,
+        documento, fecha_nacimiento, anho_ingreso, sexo,
         estado, categoria, cargo, carga_horaria,
         objeto_gasto, concepto, presupuestado, devengado
       )
@@ -40,7 +40,9 @@ harmonize_hr <- function(year){
   pry_est <- pry_est |>
     mutate(
       est_id = paste(adm1_code, adm2_code, adm3_code, sep = "-"),
-      est_name_native = adm3
+      est_name_native = adm3,
+      country_code = "PRY",
+      country_name = "Paraguay"
     )
 
   # module 2. personnel
@@ -50,7 +52,8 @@ harmonize_hr <- function(year){
       ref_date,
       personnel_id = documento,
       birth_date = fecha_nacimiento,
-      first_employment_date = anho_ingreso
+      first_employment_date = anho_ingreso,
+      gender = sexo
     )
 
   # only consider earliest employment date as the first
@@ -178,18 +181,34 @@ harmonize_hr <- function(year){
     )
 
   # load -------------------------------------------------------------------
-  pry_est |>
-    write_csv(
-      here("data", "data-clean", "full", sprintf("pry_est_%s.csv.gz", year)),
-    )
+  append_to_duckdb(
+    list(
+      pry_est = pry_est,
+      pry_personnel = pry_personnel,
+      pry_contracts = pry_contracts
+    ),
+    db_path = db_path
+  )
 
-  pry_personnel |>
-    write_csv(
-      here("data", "data-clean", "full", sprintf("pry_personnel_%s.csv.gz", year)),
-    )
+  invisible(year)
+}
 
-  pry_contracts |>
-    write_csv(
-      here("data", "data-clean", "full",sprintf("pry_contracts_%s.csv.gz", year)),
+# append each table to duckdb; only one process can write at a time,
+# so retry until the file lock is released
+append_to_duckdb <- function(tables, db_path){
+  repeat {
+    con <- tryCatch(
+      DBI::dbConnect(duckdb::duckdb(), db_path),
+      error = function(e) NULL
     )
+    if (!is.null(con)) break
+    Sys.sleep(5)
+  }
+
+  purrr::iwalk(
+    tables,
+    \(data, name) DBI::dbWriteTable(con, name, data, append = TRUE)
+  )
+
+  DBI::dbDisconnect(con, shutdown = TRUE)
 }

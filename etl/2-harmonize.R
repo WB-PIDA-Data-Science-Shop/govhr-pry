@@ -26,57 +26,21 @@ years <- funcionarios_files |>
   as.integer() |>
   unique()
 
+# reset the duckdb database, so every run rebuilds it from scratch
+# (harmonize_hr() appends each year to the module tables)
+db_path <- here("data", "data-clean", "govhr_pry_test.duckdb")
+
+fs::file_delete(
+  fs::path(c(db_path, paste0(db_path, ".wal"))) |>
+    purrr::keep(fs::file_exists)
+)
+
 plan(multisession, workers = 4)
 
 years |>
   furrr::future_walk(
-    harmonize_hr
+    harmonize_hr,
+    db_path = db_path
   )
 
-# combine ----------------------------------------------------------------
-pry_est <- fs::dir_ls(
-  here("data", "data-clean", "full"),
-  regexp = "pry_est_\\d{4}\\.csv\\.gz$"
-) |>
-  purrr::map_dfr(
-    readr::read_csv,
-    col_types = readr::cols(
-      .default = readr::col_character()
-    )
-  ) |>
-  mutate(
-    country_code = "PRY",
-    country_name = "Paraguay"
-  )
-
-pry_personnel <- fs::dir_ls(
-  here("data", "data-clean", "full"),
-  regexp = "pry_personnel_\\d{4}\\.csv\\.gz$"
-) |>
-  purrr::map_dfr(
-    readr::read_csv,
-    col_types = readr::cols(
-      .default = readr::col_character()
-    )
-  )
-
-pry_contracts <- fs::dir_ls(
-  here("data", "data-clean", "full"),
-  regexp = "pry_contracts_\\d{4}\\.csv\\.gz$"
-) |>
-  purrr::map_dfr(
-    readr::read_csv,
-    col_types = readr::cols(
-      .default = readr::col_character()
-    )
-  )
-
-# load to duckdb ---------------------------------------------------------
-con <- DBI::dbConnect(
-  duckdb::duckdb(),
-  here("data", "data-clean", "full", "govhr_pry.duckdb")
-)
-
-DBI::dbWriteTable(con, "pry_est", pry_est, overwrite = TRUE)
-DBI::dbWriteTable(con, "pry_personnel", pry_personnel, overwrite = TRUE)
-DBI::dbWriteTable(con, "pry_contracts", pry_contracts, overwrite = TRUE)
+plan(sequential)
