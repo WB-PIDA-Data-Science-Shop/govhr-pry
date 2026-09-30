@@ -80,11 +80,3 @@ con <- DBI::dbConnect(
 DBI::dbWriteTable(con, "pry_est", pry_est, overwrite = TRUE)
 DBI::dbWriteTable(con, "pry_personnel", pry_personnel, overwrite = TRUE)
 DBI::dbWriteTable(con, "pry_contracts", pry_contracts, overwrite = TRUE)
-
-pry_contracts_tbl <- dplyr::tbl(con, "pry_contracts")
-
-pry_contracts_tbl |>
-  summarise(
-    headcount = n_distinct(personnel_id),
-    .by = c(occupation, paygrade, ref_date)
-  )
