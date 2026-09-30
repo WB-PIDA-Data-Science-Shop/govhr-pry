@@ -180,16 +180,16 @@ harmonize_hr <- function(year){
   # load -------------------------------------------------------------------
   pry_est |>
     write_csv(
-      here("data", "data-clean", sprintf("pry_est_%s.csv.gz", year)),
+      here("data", "data-clean", "full", sprintf("pry_est_%s.csv.gz", year)),
     )
 
   pry_personnel |>
     write_csv(
-      here("data", "data-clean", sprintf("pry_personnel_%s.csv.gz", year)),
+      here("data", "data-clean", "full", sprintf("pry_personnel_%s.csv.gz", year)),
     )
 
   pry_contracts |>
     write_csv(
-      here("data", "data-clean", sprintf("pry_contracts_%s.csv.gz", year)),
+      here("data", "data-clean", "full",sprintf("pry_contracts_%s.csv.gz", year)),
     )
 }

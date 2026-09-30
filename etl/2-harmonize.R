@@ -35,7 +35,7 @@ years |>
 
 # combine ----------------------------------------------------------------
 pry_est <- fs::dir_ls(
-  here("data", "data-clean"),
+  here("data", "data-clean", "full"),
   regexp = "pry_est_\\d{4}\\.csv\\.gz$"
 ) |>
   purrr::map_dfr(
@@ -50,7 +50,7 @@ pry_est <- fs::dir_ls(
   )
 
 pry_personnel <- fs::dir_ls(
-  here("data", "data-clean"),
+  here("data", "data-clean", "full"),
   regexp = "pry_personnel_\\d{4}\\.csv\\.gz$"
 ) |>
   purrr::map_dfr(
@@ -61,7 +61,7 @@ pry_personnel <- fs::dir_ls(
   )
 
 pry_contracts <- fs::dir_ls(
-  here("data", "data-clean"),
+  here("data", "data-clean", "full"),
   regexp = "pry_contracts_\\d{4}\\.csv\\.gz$"
 ) |>
   purrr::map_dfr(
@@ -74,7 +74,7 @@ pry_contracts <- fs::dir_ls(
 # load to duckdb ---------------------------------------------------------
 con <- DBI::dbConnect(
   duckdb::duckdb(),
-  here("data", "data-clean", "govhr_pry.duckdb")
+  here("data", "data-clean", "full", "govhr_pry.duckdb")
 )
 
 DBI::dbWriteTable(con, "pry_est", pry_est, overwrite = TRUE)
