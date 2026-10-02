@@ -1,4 +1,25 @@
-compute_headcount <- function(data, group_cols){
+# the compute_* functions only use functions translated by both dbplyr and
+# duckplyr, so they run in duckdb without falling back to dplyr: no if_all(),
+# across(), case_when(), paste() or .data[[]] inside verbs.
+# column names are injected with !!rlang::sym() instead.
+
+# drop records with a missing value in any of `cols`, as
+# filter(if_all(all_of(cols), ~ !is.na(.x))) would
+drop_missing <- function(data, cols){
+  conditions <- lapply(
+    rlang::syms(cols),
+    function(col) rlang::expr(!is.na(!!col))
+  )
+
+  data |>
+    filter(!!!conditions)
+}
+
+compute_headcount <- function(data, group_cols = NULL){
+  if("ref_date" %in% group_cols){
+    stop("`ref_date` should not be included in `group_cols`")
+  }
+
   headcount <- data |>
     summarise(
       headcount = n_distinct(personnel_id),
@@ -8,26 +29,204 @@ compute_headcount <- function(data, group_cols){
     ) |>
     mutate(
       share_headcount = headcount / sum(headcount, na.rm = TRUE),
-      .by = .data[["ref_date"]]
+      .by = "ref_date"
     )
   
   headcount
 }
 
-compute_wagebill <- function(data, group_cols){
+compute_wagebill <- function(data, measure_col = "gross_salary_lcu", group_cols = NULL){
+  if("ref_date" %in% group_cols){
+    stop("`ref_date` should not be included in `group_cols`")
+  }
+
+  group_cols_with_date <- c(group_cols, "ref_date")
+
   wagebill <- data |>
     summarise(
-      wagebill = sum(gross_salary_lcu, na.rm = TRUE),
+      wagebill = sum(!!rlang::sym(measure_col), na.rm = TRUE),
       .by = all_of(
-        c(group_cols, "ref_date")
+        group_cols_with_date
+      )
+    )
+    
+  # complete the group x date panel, so lag() always refers to the previous
+  # period of the calendar, even when a group is missing in some periods
+  # cross join through a constant key, since cross_join() is not supported
+  # by duckplyr
+  if(!is.null(group_cols)){
+    wagebill <- wagebill |>
+      mutate(
+        share_wagebill = wagebill / sum(wagebill, na.rm = TRUE),
+        .by = "ref_date"
+      )
+
+    # complete implicit missing reference dates
+    calendar <- data |>
+      distinct(ref_date)
+
+    group_values <- data |>
+      select(all_of(group_cols)) |>
+      distinct()
+
+    wagebill <- calendar |>
+      mutate(key = 1) |>
+      inner_join(
+        group_values |> mutate(key = 1),
+        by = "key"
+      ) |>
+      select(-key) |>
+      # keep missing groups: sql joins do not match NA keys by default
+      left_join(
+        wagebill,
+        by = group_cols_with_date,
+        na_matches = "na"
+      )
+  }
+    
+  wagebill <- wagebill |>
+    mutate(
+      wagebill_lag = lag(wagebill, order_by = ref_date),
+      wagebill_growth = (wagebill - wagebill_lag) / wagebill_lag,
+      .by = all_of(group_cols)
+    ) |>
+    select(-wagebill_lag)
+
+  wagebill
+}
+
+compute_compensation <- function(data, measure_col = "gross_salary_lcu", group_cols = NULL){
+  if("ref_date" %in% group_cols){
+    stop("`ref_date` should not be included in `group_cols`")
+  }
+
+  group_cols_with_date <- c(group_cols, "ref_date")
+
+  compensation <- data |>
+    summarise(
+      compensation = mean(!!rlang::sym(measure_col), na.rm = TRUE),
+      .by = all_of(
+        group_cols_with_date
+      )
+    )
+
+  compensation
+}
+
+# wagebill growth decomposition -------------------------------------------
+# database-friendly replacement for govhr::compute_growth_decomposition().
+# works on dbplyr lazy tables, duckplyr frames and plain data frames: the
+# group x date panel is completed with joins and lags are window functions,
+# so everything is pushed down to duckdb.
+#
+# definitions follow govhr:
+# - records with a missing measure or group value are dropped
+# - the group x date panel is completed, so unobserved periods have zero
+#   headcount and wagebill and a missing compensation
+# - transition_type is "exit" when the group is not observed; otherwise
+#   "start" in the first period, "entry" when it was not observed in the
+#   previous period and "continuing" when it was
+# - continuing groups decompose wagebill growth into employment, compensation
+#   and interaction effects. entry_effect is the wagebill at entry, and
+#   exit_effect is minus the previous wagebill at exit (zero in later periods
+#   of absence)
+#
+# unlike govhr, the calendar is the set of observed ref_date, as in
+# compute_wagebill(), and the output is not sorted.
+compute_growth_decomposition <- function(data, measure_col = "gross_salary_lcu", group_cols = NULL){
+  if("ref_date" %in% group_cols){
+    stop("`ref_date` should not be included in `group_cols`")
+  }
+
+  group_cols_with_date <- c(group_cols, "ref_date")
+  measure <- rlang::sym(measure_col)
+
+  wagebill <- data |>
+    drop_missing(
+      c(measure_col, group_cols)
+    ) |>
+    summarise(
+      headcount = n(),
+      wagebill = sum(!!measure, na.rm = TRUE),
+      compensation = mean(!!measure, na.rm = TRUE),
+      .by = all_of(group_cols_with_date)
+    )
+
+  # complete the group x date panel, as in compute_wagebill(), so lag()
+  # always refers to the previous period of the calendar
+  calendar <- data |>
+    distinct(ref_date)
+
+  panel <- calendar
+
+  if(!is.null(group_cols)){
+    group_values <- wagebill |>
+      select(all_of(group_cols)) |>
+      distinct()
+
+    panel <- calendar |>
+      mutate(key = 1) |>
+      inner_join(
+        group_values |> mutate(key = 1),
+        by = "key"
+      ) |>
+      select(-key)
+  }
+
+  panel |>
+    left_join(
+      wagebill,
+      by = group_cols_with_date
+    ) |>
+    mutate(
+      is_observed = !is.na(headcount),
+      headcount = coalesce(headcount, 0),
+      wagebill = coalesce(wagebill, 0)
+    ) |>
+    mutate(
+      headcount_lag = lag(headcount, order_by = ref_date),
+      compensation_lag = lag(compensation, order_by = ref_date),
+      wagebill_lag = lag(wagebill, order_by = ref_date),
+      observed_lag = lag(is_observed, order_by = ref_date),
+      .by = all_of(group_cols)
+    ) |>
+    mutate(
+      transition_type = if_else(
+        !is_observed, "exit",
+        if_else(
+          is.na(observed_lag), "start",
+          if_else(observed_lag, "continuing", "entry")
+        )
       )
     ) |>
     mutate(
-      share_wagebill = wagebill / sum(wagebill, na.rm = TRUE),
-      .by = .data[["ref_date"]]
+      # deltas are only defined for continuing groups, NA propagates to the
+      # employment, compensation and interaction effects
+      delta_headcount = if_else(transition_type == "continuing", headcount - headcount_lag, NA_real_),
+      delta_compensation = if_else(transition_type == "continuing", compensation - compensation_lag, NA_real_),
+      employment_effect = compensation_lag * delta_headcount,
+      compensation_effect = headcount_lag * delta_compensation,
+      interaction_effect = delta_headcount * delta_compensation,
+      entry_effect = if_else(transition_type == "entry", wagebill, NA_real_),
+      exit_effect = if_else(
+        transition_type == "exit",
+        if_else(coalesce(observed_lag, FALSE), -wagebill_lag, 0),
+        NA_real_
+      ),
+      # entry and exit effects are exclusive, and both are NA at start
+      total_effect = if_else(
+        transition_type == "continuing",
+        employment_effect + compensation_effect + interaction_effect,
+        coalesce(entry_effect, exit_effect)
+      )
+    ) |>
+    select(
+      all_of(group_cols_with_date),
+      transition_type, headcount, headcount_lag, compensation, compensation_lag,
+      employment_effect, compensation_effect, interaction_effect, entry_effect,
+      delta_compensation, exit_effect, total_effect, wagebill, wagebill_lag,
+      is_observed, observed_lag
     )
-  
-  wagebill
 }
 
 # workforce movement ------------------------------------------------------
@@ -66,7 +265,7 @@ compute_movement <- function(
 ) {
   personnel_active <- data |>
     filter(
-      .data[[status_col]] == "active"
+      !!rlang::sym(status_col) == "active"
     )
 
   personnel_unique <- personnel_active |>
@@ -176,11 +375,8 @@ compute_transition <- function(
   key_cols <- c(id_col, "ref_date")
 
   entity_group <- data |>
-    filter(
-      if_all(
-        all_of(c(id_col, group_cols)),
-        ~ !is.na(.x)
-      )
+    drop_missing(
+      c(id_col, group_cols)
     ) |>
     select(
       all_of(c(key_cols, group_cols))
@@ -210,7 +406,7 @@ compute_transition <- function(
     summarise(
       n_duplicates = sum(n_records - 1, na.rm = TRUE),
       n_rows = sum(n_records, na.rm = TRUE),
-      n_ids = n_distinct(.data[[id_col]])
+      n_ids = n_distinct(!!rlang::sym(id_col))
     ) |>
     collect()
 
@@ -237,16 +433,30 @@ compute_transition <- function(
       )
   }
 
-  # if necessary, combine group cols into a single label
+  # if necessary, combine group cols into a single label. paste() cannot be
+  # translated, so labels are built in base R for the distinct group values
+  # and joined back
   if (length(group_cols) > 1) {
+    group_labels <- entity_group |>
+      select(all_of(group_cols)) |>
+      distinct() |>
+      collect()
+
+    group_labels$from <- do.call(
+      paste,
+      c(group_labels[group_cols], sep = " | ")
+    )
+
     entity_group <- entity_group |>
-      mutate(
-        from = paste(!!!rlang::syms(group_cols), sep = " | ")
+      left_join(
+        group_labels,
+        by = group_cols,
+        copy = TRUE
       )
   } else {
     entity_group <- entity_group |>
       mutate(
-        from = .data[[group_cols]]
+        from = !!rlang::sym(group_cols)
       )
   }
 

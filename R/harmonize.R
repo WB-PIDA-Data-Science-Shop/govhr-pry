@@ -1,4 +1,8 @@
 harmonize_hr <- function(year, db_path){
+  message(
+    "Harmonizing data for year ", year, "..."
+  )
+
   funcionarios <- funcionarios_files |>
     stringr::str_subset(
       as.character(year)
@@ -91,7 +95,7 @@ harmonize_hr <- function(year, db_path){
       occupation = cargo,
       concepto,
       whours_raw = carga_horaria,
-      family_gasto = stringr::str_sub(objeto_gasto, 1, 2),
+      objeto_gasto,
       presupuestado = as.numeric(presupuestado) %>% # if 0, replace with NA
         if_else(
           . == 0,
@@ -121,11 +125,14 @@ harmonize_hr <- function(year, db_path){
 
   # reference: https://www.mef.gov.py/sites/default/files/2025-08/CLASIFICADOR%20PRESUPUESTARIO%20PGN%202026_0.pdf
   pry_payroll <- pry_contracts |>
+    filter(
+      # only include expenses on salaries (classified as 1)
+      stringr::str_sub(objeto_gasto, 1, 1) == "1"
+    ) |>
     # collapse salary rows and assign them to gross_salary and allowances
-    # (split amounts into columns first, so the summary is plain sums)
     mutate(
       paycheck_amount = coalesce(devengado, presupuestado), # if devengado is NA, use presupuestado
-      base_salary = coalesce(family_gasto == 11, FALSE),
+      base_salary = objeto_gasto == 111,
       base_salary_lcu = if_else(base_salary, paycheck_amount, NA_real_),
       allowance_lcu = if_else(base_salary, NA_real_, paycheck_amount)
     ) |>
@@ -211,4 +218,8 @@ append_to_duckdb <- function(tables, db_path){
   )
 
   DBI::dbDisconnect(con, shutdown = TRUE)
+
+  message(
+    "Finished harmonizing data for year ", unique(tables[[1]]$ref_date) |> lubridate::year(), "."
+  )
 }

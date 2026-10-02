@@ -448,12 +448,246 @@ wagebill <- pry_contracts_executive |>
   mutate(
     employment_status = "active"
   ) |>
-  compute_wagebill(
-    group_cols = c("ref_date")
+  compute_wagebill() |>
+  collect() |>
+  mutate(
+    wagebill = govhr::deflate_to_real(
+      wagebill,
+      ref_date,
+      country_code = "PRY"
+    )
+  )
+
+wagebill |>
+  plot_trend(
+    group_col = c("ref_date"),
+    y_col = "wagebill",
+    y_label = "Wagebill (real LCU, 2021)"
+  ) +
+  coord_cartesian(
+    ylim = c(0, NA)
+  )
+
+ggsave(
+  "wagebill.png"
+)
+
+# by establishment
+wagebill_est <- pry_contracts_executive |>
+  mutate(
+    employment_status = "active"
   ) |>
-  collect()
+  compute_wagebill(
+    group_cols = c("est_id")
+  ) |>
+  left_join(
+    pry_est_name,
+    by = c("est_id")
+  ) |>
+  collect() |>
+  mutate(
+    wagebill = govhr::deflate_to_real(
+      wagebill,
+      ref_date,
+      country_code = "PRY"
+    )
+  )
 
+wagebill_est |>
+  filter(
+    !is.na(wagebill)
+  ) |>
+  mutate(
+    est_name_native = forcats::fct_lump(
+      est_name_native,
+      n = 6,
+      w = wagebill,
+      other_level = "Other"
+    ) |>
+      forcats::fct_reorder(
+        wagebill,
+        .fun = sum,
+        .desc = TRUE
+      )
+  ) |>
+  summarise(
+    wagebill = sum(wagebill),
+    .by = c(ref_date, est_name_native)
+  ) |>
+  plot_trend(
+    group_col = "est_name_native",
+    y_col = "wagebill",
+    y_label = "Wagebill (real LCU, 2021)"
+  ) +
+  theme(
+    legend.position = "bottom"
+  )
 
+ggsave(
+  "wagebill_by_est.png"
+)
+
+# growth
+wagebill |>
+  plot_trend(
+    group_col = c("ref_date"),
+    y_col = "wagebill_growth",
+    y_label = "Wagebill Growth Rate"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  )
+
+ggsave(
+  "wagebill_growth.png"
+)
+
+## decomposition
+
+# compensation
+## overall
+pry_compensation <- pry_contracts_executive |>
+  compute_compensation(
+    measure_col = "gross_salary_lcu"
+  ) |>
+  collect() |>
+  mutate(
+    compensation = govhr::deflate_to_real(
+      compensation,
+      ref_date,
+      country_code = "PRY"
+    )
+  )
+
+pry_compensation |>
+  plot_trend(
+    group_col = c("ref_date"),
+    y_col = "compensation",
+    y_label = "Average compensation"
+  )
+
+## by group
+
+# compensation growth
+
+# pay structure
+## base salary vs. allowances
+wagebill_base_salary <- pry_contracts_executive |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_wagebill(
+    measure_col = "base_salary_lcu"
+  ) |>
+  collect() |>
+  select(
+    ref_date,
+    base_salary = wagebill
+  )
+
+wagebill_allowance <- pry_contracts_executive |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_wagebill(
+    measure_col = "allowance_lcu"
+  ) |>
+  collect() |>
+  select(
+    ref_date,
+    allowance = wagebill
+  )
+
+wagebill_by_component <- wagebill_base_salary |>
+  left_join(
+    wagebill_allowance,
+    by = c("ref_date")
+  ) |>
+  mutate(
+    total_wagebill = base_salary + allowance,
+    share_base_salary = base_salary / total_wagebill,
+    share_allowance = allowance / total_wagebill
+  ) |>
+  tidyr::pivot_longer(
+    c(share_base_salary, share_allowance),
+    names_to = "component",
+    values_to = "share_wagebill"
+  ) 
+
+wagebill_by_component |>
+  ggplot(
+    aes(
+      x = ref_date,
+      y = share_wagebill,
+      fill = component,
+      group = component
+    )
+  ) +
+  geom_area(
+    position = "stack"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  scale_fill_manual(
+    name = "Wagebill Component",
+    labels = c(
+      "share_base_salary" = "Base Salary",
+      "share_allowance" = "Allowances"
+    ),
+    values = c(
+      "share_base_salary" = "#202d85",
+      "share_allowance" = "#de4500"
+    )
+  )
+
+## by contract type
+wagebill_share_by_contract_type <- pry_contracts_executive |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_wagebill(
+    group_cols = c("contract_type")
+  ) |>
+  collect() 
+
+wagebill_share_by_contract_type |>
+  ggplot(
+    aes(
+      x = ref_date,
+      y = share_wagebill,
+      fill = contract_type,
+      group = contract_type
+    )
+  ) +
+  geom_area(
+    position = "stack"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  scale_fill_manual(
+    name = "Type of Contract",
+    labels = c(
+      "fixed-term" = "Fixed-Term",
+      "permanent" = "Permanent"
+    ),
+    values = c(
+      "fixed-term" = "#de4500",
+      "permanent" = "#202d85"
+    )
+  )
 
 # integrated analytics ---------------------------------------------------
 
