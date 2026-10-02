@@ -553,7 +553,7 @@ ggsave(
 ## overall
 pry_compensation <- pry_contracts_executive |>
   compute_compensation(
-    measure_col = "gross_salary_lcu"
+    measure_col = "base_salary_lcu"
   ) |>
   collect() |>
   mutate(
@@ -572,6 +572,40 @@ pry_compensation |>
   )
 
 ## by group
+pry_compensation_by_contract <- pry_contracts_executive |>
+  filter(
+    !is.na(contract_type)
+  ) |>
+  compute_compensation(
+    measure_col = "base_salary_lcu",
+    group_cols = c("contract_type")
+  ) |>
+  collect() |>
+  mutate(
+    compensation = govhr::deflate_to_real(
+      compensation,
+      ref_date,
+      country_code = "PRY"
+    )
+  )
+
+pry_compensation_by_contract |>
+  plot_trend(
+    group_col = c("contract_type"),
+    y_col = "compensation",
+    y_label = "Average compensation"
+  ) +
+  scale_color_manual(
+    name = "Type of Contract",
+    labels = c(
+      "fixed-term" = "Fixed-Term",
+      "permanent" = "Permanent"
+    ),
+    values = c(
+      "fixed-term" = "#de4500",
+      "permanent" = "#202d85"
+    )
+  )
 
 # compensation growth
 

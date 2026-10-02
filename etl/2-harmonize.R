@@ -2,7 +2,6 @@
 library(dplyr)
 library(readr)
 library(govhr)
-library(furrr)
 library(here)
 
 source(
@@ -35,12 +34,9 @@ fs::file_delete(
     purrr::keep(fs::file_exists)
 )
 
-plan(multisession, workers = 3)
-
 years |>
-  furrr::future_walk(
+  purrr::walk(
     harmonize_hr,
+    files = funcionarios_files,
     db_path = db_path
   )
-
-plan(sequential)

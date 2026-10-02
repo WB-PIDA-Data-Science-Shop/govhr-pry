@@ -1,9 +1,9 @@
-harmonize_hr <- function(year, db_path){
+harmonize_hr <- function(year, files, db_path){
   message(
     "Harmonizing data for year ", year, "..."
   )
 
-  funcionarios <- funcionarios_files |>
+  funcionarios <- files |>
     stringr::str_subset(
       as.character(year)
     ) |>
@@ -17,7 +17,7 @@ harmonize_hr <- function(year, db_path){
         anho, mes,
         nivel, descripcion_nivel, entidad, descripcion_entidad, oee, descripcion_oee,
         documento, fecha_nacimiento, anho_ingreso, sexo,
-        estado, categoria, cargo, carga_horaria,
+        estado, categoria, funcion, cargo, carga_horaria,
         objeto_gasto, concepto, presupuestado, devengado
       )
     )
@@ -92,36 +92,23 @@ harmonize_hr <- function(year, db_path){
         NA_character_,
         categoria
       ),
-      occupation = cargo,
+      # normalize spelling variants (case, accents, spacing), so the same
+      # occupation maps to the same contract
+      occupation = cargo |>
+        stringi::stri_trans_general("Latin-ASCII") |>
+        stringr::str_to_upper() |>
+        stringr::str_squish(),
       concepto,
       whours_raw = carga_horaria,
       objeto_gasto,
-      presupuestado = as.numeric(presupuestado) %>% # if 0, replace with NA
-        if_else(
-          . == 0,
-          NA_real_,
-          .
-        ),
-      devengado = as.numeric(devengado) %>%
-        if_else(
-          . == 0,
-          NA_real_,
-          .
-        )
+      presupuestado = as.numeric(presupuestado)
     )
 
-  # generate a new contract ID for each spell of a contract,
-  # defined as a consecutive sequence of rows with the same paygrade and occupation
   pry_contracts <- pry_contracts |>
-    arrange(personnel_id, est_id, ref_date) |>
     mutate(
-      spell_id = consecutive_id(paygrade, occupation),
-      .by = c(personnel_id, est_id)
-    ) |>
-    mutate(
-      contract_id = paste(est_id, personnel_id, spell_id, sep = "-")
-    ) |>
-    select(-spell_id)
+      contract_id = paste(est_id, personnel_id, occupation, sep = "-") |>
+        openssl::sha256()
+    )
 
   # reference: https://www.mef.gov.py/sites/default/files/2025-08/CLASIFICADOR%20PRESUPUESTARIO%20PGN%202026_0.pdf
   pry_payroll <- pry_contracts |>
@@ -131,7 +118,7 @@ harmonize_hr <- function(year, db_path){
     ) |>
     # collapse salary rows and assign them to gross_salary and allowances
     mutate(
-      paycheck_amount = coalesce(devengado, presupuestado), # if devengado is NA, use presupuestado
+      paycheck_amount = presupuestado, # if devengado is NA, use presupuestado
       base_salary = objeto_gasto == 111,
       base_salary_lcu = if_else(base_salary, paycheck_amount, NA_real_),
       allowance_lcu = if_else(base_salary, NA_real_, paycheck_amount)
@@ -172,6 +159,12 @@ harmonize_hr <- function(year, db_path){
       contract_type,
       paygrade,
       occupation
+    ) |>
+    # only pick the first paygrade associated with each contract
+    arrange(
+      contract_id,
+      ref_date,
+      paygrade
     ) |>
     distinct(
       contract_id,
