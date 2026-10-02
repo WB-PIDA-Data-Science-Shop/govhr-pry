@@ -74,6 +74,10 @@ pry_contracts_executive <- pry_contracts |>
     ref_date <= as.Date("2025-12-01")
   )
 
+pry_est_name <- pry_est_executive |>
+      distinct(est_id, .keep_all = TRUE) |>
+      select(est_id, est_name_native) 
+
 # workforce analytics ----------------------------------------------------
 # headcount
 headcount <- pry_contracts_executive |>
@@ -213,12 +217,8 @@ headcount_by_age_group <- headcount_by_age |>
     !is.na(age)
   ) |>
   mutate(
-    age_group = cut(
-      as.double(age),
-      breaks = c(0, 30, 40, 50, 60, Inf),
-      labels = c("<30", "30-39", "40-49", "50-59", "60+"),
-      right = FALSE
-    )
+    age = as.numeric(age),
+    age_group = cut_age(age)
   ) |>
   summarise(
     headcount = sum(headcount),
@@ -255,22 +255,8 @@ ggsave(
 )
 
 # movements
-## recruitment
-recruitment <- pry_contracts_executive |>
-  mutate(
-    employment_status = "active"
-  ) |>
-  govhr::compute_workforce_movement(
-    movement_type = "hire",
-    measurement_type = "count",
-    group_cols = c("ref_date")
-  ) |>
-  rename(
-    hires = indicator
-  )
-
 ## overall
-workforce <- pry_contracts_executive |>
+movement <- pry_contracts_executive |>
   mutate(
     employment_status = "active"
   ) |>
@@ -282,9 +268,9 @@ workforce <- pry_contracts_executive |>
   ) |>
   collect()
 
-workforce |>
+movement |>
   tidyr::pivot_longer(
-    c(hires, separations),
+    c(hire_rate, separation_rate),
     names_to = "movement_type",
     values_to = "value"
   ) |>
@@ -294,10 +280,21 @@ workforce |>
     y_label = "Number of Movements"
   ) +
   scale_color_manual(
+    name = "Type of Movement",
+    labels = c(
+      "hire_rate" = "Hires",
+      "separation_rate" = "Separations"
+    ),
     values = c(
-      "hires" = "#202d85",
-      "separations" = "#de4500"
+      "hire_rate" = "#202d85",
+      "separation_rate" = "#de4500"
     )
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  theme(
+    legend.position = "bottom"
   )
 
 ggsave(
@@ -305,12 +302,12 @@ ggsave(
 )
 
 ## by establishment
-workforce <- pry_contracts_executive |>
+movement_by_est <- pry_contracts_executive |>
   mutate(
     employment_status = "active"
   ) |>
   compute_movement(
-    group_cols = c("ref_date", "est_id")
+    group_cols = c("est_id")
   ) |>
   mutate(
     replacement_rate = hires / separations
@@ -319,17 +316,17 @@ workforce <- pry_contracts_executive |>
 
 # to aid visualization, randomly sample 10 establishments that span the entire
 # period
-sampled_est_ids <- workforce |>
+sampled_est_ids <- movement_by_est |>
   group_by(est_id) |>
   filter(
-    n_distinct(ref_date) == n_distinct(workforce$ref_date)
+    n_distinct(ref_date) == n_distinct(movement_by_est$ref_date)
   ) |>
   ungroup() |>
   distinct(est_id) |>
-  slice_sample(n = 12) |>
+  slice_sample(n = 9) |>
   pull(est_id)
 
-workforce |>
+movement_by_est |>
   filter(
     est_id %in% sampled_est_ids
   ) |>
@@ -374,7 +371,7 @@ ggplot2::ggsave(
 )
 
 ## net rate
-workforce |>
+movement_by_est |>
   filter(
     est_id %in% sampled_est_ids
   ) |>
@@ -413,7 +410,49 @@ ggplot2::ggsave(
   height = 12
 )
 
+# transition
+## establishment
+transitions_est <- pry_contracts_executive |>
+  compute_transition(
+    id_col = "personnel_id",
+    group_cols = "est_id",
+    summarize = TRUE
+  )
+  
+transitions_est <- transitions_est |>
+  left_join(
+    pry_est_name,
+    by = c("from" = "est_id")
+  ) |>
+  left_join(
+    pry_est_name,
+    by = c("to" = "est_id"),
+    suffix = c("_from", "_to")
+  ) |>
+  select(
+    from = est_name_native_from,
+    to = est_name_native_to,
+    transitions
+  ) |>
+  summarise(
+    weight = sum(transitions, na.rm = TRUE),
+    .by = c("from", "to")
+  ) |>
+  collect()
+
+transitions_est |>
+  plot_transition()
+
 # wagebill analytics -----------------------------------------------------
+wagebill <- pry_contracts_executive |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_wagebill(
+    group_cols = c("ref_date")
+  ) |>
+  collect()
+
 
 
 # integrated analytics ---------------------------------------------------

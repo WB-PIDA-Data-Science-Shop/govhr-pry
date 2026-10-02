@@ -35,7 +35,7 @@ fs::file_delete(
     purrr::keep(fs::file_exists)
 )
 
-plan(multisession, workers = 4)
+plan(multisession, workers = 3)
 
 years |>
   furrr::future_walk(
