@@ -27,7 +27,7 @@ years <- funcionarios_files |>
 
 # reset the duckdb database, so every run rebuilds it from scratch
 # (harmonize_hr() appends each year to the module tables)
-db_path <- here("data", "data-clean", "govhr_pry_test.duckdb")
+db_path <- here("data", "data-clean", "govhr_pry.duckdb")
 
 fs::file_delete(
   fs::path(c(db_path, paste0(db_path, ".wal"))) |>
@@ -40,3 +40,26 @@ years |>
     files = funcionarios_files,
     db_path = db_path
   )
+
+  
+# set primary keys -------------------------------------------------------
+con <- DBI::dbConnect(
+  duckdb::duckdb(),
+  dbdir = db_path,
+  read_only = FALSE
+)
+
+DBI::dbExecute(
+  con,
+  "ALTER TABLE pry_est ADD PRIMARY KEY (est_id, ref_date)"
+)
+
+DBI::dbExecute(
+  con,
+  "ALTER TABLE pry_personnel ADD PRIMARY KEY (personnel_id, ref_date)"
+)
+
+DBI::dbExecute(
+  con,
+  "ALTER TABLE pry_contracts ADD PRIMARY KEY (contract_id, ref_date)"
+)

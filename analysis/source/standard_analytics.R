@@ -30,6 +30,10 @@ source(
   here::here("R", "analysis.R")
 )
 
+source(
+  here::here("R", "harmonize.R")
+)
+
 set.seed(2026)
 
 # read-in ----------------------------------------------------------------
@@ -41,6 +45,9 @@ con <- DBI::dbConnect(
 pry_est <- tbl(con, "pry_est")
 pry_personnel <- tbl(con, "pry_personnel")
 pry_contracts <- tbl(con, "pry_contracts")
+
+# monthly CPI, december 2021 = 100
+pry_cpi <- harmonize_cpi("PRY")
 
 pry_est_executive <- pry_est |>
   filter(
@@ -104,6 +111,9 @@ headcount |>
   ) +
   scale_y_continuous(
     labels = scales::comma_format()
+  ) +
+  coord_cartesian(
+    ylim = c(0, NA)
   ) +
   labs(
     x = "Headcount",
@@ -448,21 +458,23 @@ wagebill <- pry_contracts_executive |>
   mutate(
     employment_status = "active"
   ) |>
-  compute_wagebill() |>
+  compute_wagebill(
+    measure_col = "gross_salary_lcu"
+  ) |>
   collect() |>
+  arrange(
+    ref_date
+  ) |>
   mutate(
-    wagebill = govhr::deflate_to_real(
-      wagebill,
-      ref_date,
-      country_code = "PRY"
-    )
+    wagebill = deflate_to_real_monthly(wagebill, ref_date, country_code = "PRY", cpi = pry_cpi),
+    wagebill_growth = wagebill / lag(wagebill) - 1
   )
 
 wagebill |>
   plot_trend(
     group_col = c("ref_date"),
     y_col = "wagebill",
-    y_label = "Wagebill (real LCU, 2021)"
+    y_label = "Wagebill (real LCU, Dec 2021)"
   ) +
   coord_cartesian(
     ylim = c(0, NA)
@@ -470,6 +482,79 @@ wagebill |>
 
 ggsave(
   "wagebill.png"
+)
+
+# base salary
+# join the two components by date: bind_rows() stacked them as separate rows,
+# leaving every other row NA, so geom_line() had no consecutive points to join
+wagebill_salary <- pry_contracts_executive |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_wagebill(
+    measure_col = "base_salary_lcu"
+  ) |>
+  collect() |>
+  select(
+    ref_date,
+    wagebill_base_salary = wagebill
+  ) |>
+  inner_join(
+    pry_contracts_executive |>
+      mutate(
+        employment_status = "active"
+      ) |>
+      compute_wagebill(
+        measure_col = "allowance_lcu"
+      ) |>
+      collect() |>
+      select(
+        ref_date,
+        wagebill_allowance = wagebill
+      ),
+    by = "ref_date"
+  ) |>
+  mutate(
+    across(
+      c(wagebill_base_salary, wagebill_allowance),
+      ~ deflate_to_real_monthly(.x, ref_date, country_code = "PRY", cpi = pry_cpi)
+    )
+  )
+
+wagebill_salary |>
+  tidyr::pivot_longer(
+    c(wagebill_base_salary, wagebill_allowance),
+    names_to = "component",
+    values_to = "wagebill"
+  ) |>
+  mutate(
+    component = recode(
+      component,
+      "wagebill_base_salary" = "Base Salary",
+      "wagebill_allowance" = "Allowances"
+    )
+  ) |>
+  plot_trend(
+    group_col = c("component"),
+    y_col = "wagebill",
+    y_label = "Wagebill (real LCU, Dec 2021)"
+  ) +
+  scale_color_manual(
+    name = "Salary Component",
+    values = c(
+      "Base Salary" = "#202d85",
+      "Allowances" = "#de4500"
+    )
+  ) +
+  facet_wrap(
+    vars(component)
+  ) +
+  coord_cartesian(
+    ylim = c(0, NA)
+  )
+
+ggsave(
+  "wagebill_by_salary_component.png"
 )
 
 # by establishment
@@ -486,11 +571,7 @@ wagebill_est <- pry_contracts_executive |>
   ) |>
   collect() |>
   mutate(
-    wagebill = govhr::deflate_to_real(
-      wagebill,
-      ref_date,
-      country_code = "PRY"
-    )
+    wagebill = deflate_to_real_monthly(wagebill, ref_date, country_code = "PRY", cpi = pry_cpi)
   )
 
 wagebill_est |>
@@ -517,10 +598,19 @@ wagebill_est |>
   plot_trend(
     group_col = "est_name_native",
     y_col = "wagebill",
-    y_label = "Wagebill (real LCU, 2021)"
+    y_label = "Wagebill (real LCU, Dec 2021)"
   ) +
   theme(
     legend.position = "bottom"
+  ) +
+  ggthemes::scale_color_solarized() +
+  ggplot2::guides(
+    color = ggplot2::guide_legend(
+      title = "Establishment",
+      title.position = "top",
+      ncol = 2,
+      override.aes = list(linewidth = 6)
+    )
   )
 
 ggsave(
@@ -548,6 +638,45 @@ ggsave(
 )
 
 ## decomposition
+wagebill_growth_decomposition <- pry_contracts_executive |>
+  compute_growth_decomposition(
+    measure_col = "base_salary_lcu"
+  ) |>
+  collect()
+
+wagebill_growth_decomposition |>
+  filter(
+    employment_effect == max(employment_effect)
+  )
+
+wagebill_growth_decomposition |>
+  mutate(
+    total_effect = employment_effect + compensation_effect + interaction_effect,
+    across(
+      c(employment_effect, compensation_effect, interaction_effect, total_effect),
+      ~ .x / total_effect
+    )
+  ) |>
+  # stack employment_effect, compensation_effect and interaction_effect
+  tidyr::pivot_longer(
+    c(employment_effect, compensation_effect, interaction_effect),
+    names_to = "growth_component",
+    values_to = "growth_rate"
+  ) |>
+  ggplot(
+    aes(
+      x = ref_date,
+      y = growth_rate,
+      fill = growth_component,
+      group = growth_component
+    )
+  ) +
+  geom_col(
+    position = "stack"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  )
 
 # compensation
 ## overall
@@ -557,10 +686,11 @@ pry_compensation <- pry_contracts_executive |>
   ) |>
   collect() |>
   mutate(
-    compensation = govhr::deflate_to_real(
+    compensation = deflate_to_real_monthly(
       compensation,
       ref_date,
-      country_code = "PRY"
+      country_code = "PRY",
+      cpi = pry_cpi
     )
   )
 
@@ -582,10 +712,11 @@ pry_compensation_by_contract <- pry_contracts_executive |>
   ) |>
   collect() |>
   mutate(
-    compensation = govhr::deflate_to_real(
+    compensation = deflate_to_real_monthly(
       compensation,
       ref_date,
-      country_code = "PRY"
+      country_code = "PRY",
+      cpi = pry_cpi
     )
   )
 
