@@ -85,7 +85,7 @@ harmonize_hr <- function(year, files, db_path){
       contract_type = case_when(
         estado == "PERMANENTE" ~ "permanent",
         estado == "CONTRATADO" ~ "fixed-term",
-        estado == "COMISSIONADO" ~ "fixed-term"
+        estado == "COMISIONADO" ~ "fixed-term"
       ),
       paygrade = if_else(
         categoria == "SIN CATEGORÍA",
