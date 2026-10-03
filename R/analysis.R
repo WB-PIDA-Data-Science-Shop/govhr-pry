@@ -113,6 +113,152 @@ compute_compensation <- function(data, measure_col = "gross_salary_lcu", group_c
   compensation
 }
 
+# distribution ------------------------------------------------------------
+# database-friendly replacement for govhr::compute_density().
+# works on dbplyr lazy tables, duckplyr frames and plain data frames.
+# duckplyr translates neither floor(), %% nor cumsum(), so:
+# - bin edges are computed in R from the range of the measure, and records
+#   are assigned to their bin with a range join
+# - cumulative counts sum, with an inequality self-join, the counts of the
+#   bins below. the join grows with groups x bins^2, so keep the number of
+#   bins moderate
+#
+# definitions follow govhr:
+# - records with a missing measure are dropped. missing group values are
+#   kept as a group of their own
+# - bins are [bin, bin + binwidth), with bin a multiple of binwidth. every
+#   bin between the lowest and the highest one is reported for every group,
+#   with a zero count when empty
+# - pct is the share of the group's records in the bin, and cum_pct the
+#   share in the bin or below
+#
+# unlike govhr, several group_cols are allowed and the output is not sorted.
+compute_density <- function(
+  data,
+  measure_col,
+  group_cols = NULL,
+  binwidth = 1,
+  latest_measure = FALSE
+) {
+  measure <- rlang::sym(measure_col)
+
+  if (latest_measure) {
+    latest_date <- data |>
+      summarise(
+        ref_date = max(ref_date, na.rm = TRUE)
+      )
+
+    data <- data |>
+      semi_join(
+        latest_date,
+        by = "ref_date"
+      )
+  }
+
+  data <- data |>
+    drop_missing(measure_col) |>
+    select(
+      all_of(c(group_cols, measure_col))
+    )
+
+  measure_range <- data |>
+    summarise(
+      n_records = n(),
+      lower = min(!!measure, na.rm = TRUE),
+      upper = max(!!measure, na.rm = TRUE)
+    ) |>
+    collect()
+
+  if (measure_range$n_records == 0) {
+    stop("`", measure_col, "` has no non-missing values")
+  }
+
+  # bin edges, as in govhr. the outer edges are open, so that rounding
+  # errors in the range join cannot drop the lowest or highest records
+  bin_index <- seq(
+    floor(measure_range$lower / binwidth),
+    floor(measure_range$upper / binwidth)
+  )
+
+  bins <- tibble::tibble(
+    key = 1,
+    bin_id = seq_along(bin_index),
+    bin = bin_index * binwidth,
+    bin_lower = c(-Inf, bin[-1]),
+    bin_upper = c(bin[-1], Inf)
+  )
+
+  binned <- data |>
+    inner_join(
+      bins |> select(bin_id, bin_lower, bin_upper),
+      by = join_by(!!measure >= bin_lower, !!measure < bin_upper),
+      copy = TRUE
+    ) |>
+    summarise(
+      count = n(),
+      .by = all_of(c(group_cols, "bin_id"))
+    )
+
+  # complete the group x bin grid, crossing through a constant key, as in
+  # compute_wagebill()
+  group_values <- binned |>
+    summarise(
+      n_bins = n(),
+      .by = all_of(group_cols)
+    ) |>
+    mutate(key = 1)
+
+  grid <- group_values |>
+    inner_join(
+      bins |> select(key, bin_id, bin),
+      by = "key",
+      copy = TRUE,
+      relationship = "many-to-many"
+    ) |>
+    select(
+      all_of(c(group_cols, "bin_id", "bin"))
+    )
+
+  # bins below the group's lowest record have no match, so a zero count
+  cumulative <- grid |>
+    inner_join(
+      binned |> rename(bin_id_below = bin_id, count_below = count),
+      by = join_by(!!!rlang::syms(group_cols), bin_id >= bin_id_below),
+      na_matches = "na"
+    ) |>
+    summarise(
+      cum_count = sum(count_below, na.rm = TRUE),
+      .by = all_of(c(group_cols, "bin_id"))
+    )
+
+  grid |>
+    left_join(
+      binned,
+      by = c(group_cols, "bin_id"),
+      na_matches = "na"
+    ) |>
+    left_join(
+      cumulative,
+      by = c(group_cols, "bin_id"),
+      na_matches = "na"
+    ) |>
+    mutate(
+      count = coalesce(count, 0),
+      cum_count = coalesce(cum_count, 0)
+    ) |>
+    mutate(
+      total = sum(count, na.rm = TRUE),
+      .by = all_of(group_cols)
+    ) |>
+    mutate(
+      pct = count / total,
+      cum_pct = cum_count / total
+    ) |>
+    select(
+      all_of(group_cols), bin, count, pct, cum_pct
+    )
+}
+
 # wagebill growth decomposition -------------------------------------------
 # database-friendly replacement for govhr::compute_growth_decomposition().
 # works on dbplyr lazy tables, duckplyr frames and plain data frames: the
