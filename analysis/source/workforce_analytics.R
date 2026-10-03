@@ -324,16 +324,16 @@ movement_by_est <- pry_contracts_executive |>
   ) |>
   collect()
 
-# to aid visualization, randomly sample 10 establishments that span the entire
-# period
-sampled_est_ids <- movement_by_est |>
-  group_by(est_id) |>
-  filter(
-    n_distinct(ref_date) == n_distinct(movement_by_est$ref_date)
+# to aid visualization, sample the 9 largest establishments
+sampled_est_ids <- headcount_by_est |>
+  summarise(
+    headcount = sum(headcount),
+    .by = c(est_id)
   ) |>
-  ungroup() |>
-  distinct(est_id) |>
-  slice_sample(n = 9) |>
+  slice_max(
+    order_by = headcount,
+    n = 9
+  ) |>
   pull(est_id)
 
 movement_by_est |>
@@ -452,3 +452,11 @@ transitions_est <- transitions_est |>
 
 transitions_est |>
   plot_transition()
+
+ggplot2::ggsave(
+  "workforce_transitions_by_est.png",
+  path = here::here("analysis", "figs"),
+  device = ragg::agg_png,
+  width = 12,
+  height = 12
+)
