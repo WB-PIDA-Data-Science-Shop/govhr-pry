@@ -659,6 +659,9 @@ compensation_distribution_by_gender |>
       "MASCULINO" = "#202d85"
     )
   ) +
+  theme(
+    legend.position = "none"
+  ) +
   coord_cartesian(
     xlim = c(0, 2.5e7)
   )

@@ -52,7 +52,7 @@ Indicators in `R/analysis.R` are written so they run inside DuckDB (via dbplyr/d
 
 **Coverage.** The database includes all branches and levels of government in the SFP files (`adm1`). The analysis keeps only `adm1 == "PODER EJECUTIVO"`.
 
-**Money.** All amounts are in nominal guaraníes (`_lcu`) and are taken from the budgeted amount (`presupuestado`). `harmonize_cpi()` downloads the monthly headline CPI (BCP series via the IMF, rebased to Dec 2021 = 100) for deflating to real terms.
+**Wages.** All amounts are in nominal guaraníes (`_lcu`) and are taken from the budgeted amount (`presupuestado`). `harmonize_cpi()` downloads the monthly headline CPI (BCP series via the IMF, rebased to Dec 2021 = 100) for deflating to real terms.
 
 ### Modules (`data/data-clean/govhr_pry.duckdb`)
 
@@ -99,11 +99,11 @@ Only objects of expenditure in group 1 (*servicios personales*) count as pay. Se
 
 ## Analysis
 
-The analysis scripts follow the standard `govhr` diagnostic of public-sector employment and pay. Each produces the figures in [analysis/figs/](analysis/figs/).
+The analysis follows the standard `govhr` diagnostic of public-sector employment and pay. Each produces the figures in [analysis/figs/](analysis/figs/).
 
 **Workforce** ([workforce_analytics.R](analysis/source/workforce_analytics.R))
-- Headcount over time: total, by establishment, by contract type, and by age group.
-- Workforce movements: monthly hire and separation rates, overall and for the nine largest establishments, plus net rates.
+- Headcount: total, by establishment, by contract type, and by age group.
+- Movements: monthly hire and separation rates, overall and for the nine largest establishments, plus net rates.
 - Career transitions: a network of moves between establishments.
 
 **Wage bill and compensation** ([wagebill_analytics.R](analysis/source/wagebill_analytics.R))
