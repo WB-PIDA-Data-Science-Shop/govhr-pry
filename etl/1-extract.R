@@ -6,6 +6,8 @@
 # builds its table in the browser, so its HTML contains no links. The table is
 # populated from the JSON endpoint /list/data, which lists every file served
 # under /data/. We query that endpoint directly.
+#
+# access date: 9/28/2026
 
 sfp_base_url <- "https://datos.sfp.gov.py"
 raw_data_dir <- file.path("data", "data-raw")
@@ -26,7 +28,7 @@ list_funcionarios_urls <- function(base_url = sfp_base_url) {
 # <dest_dir>/funcionarios_YYYY_M.csv.gz, re-encoded from Latin-1 to UTF-8.
 download_funcionarios_csv <- function(url, dest_dir = raw_data_dir) {
   csv_name <- sub("\\.zip$", "", basename(url))
-  dest <- file.path(dest_dir, paste0(csv_name, ".gz"))
+  dest <- fs::path(dest_dir, paste0(csv_name, ".gz"))
 
   zip_path <- tempfile(fileext = ".zip")
   on.exit(unlink(zip_path))
