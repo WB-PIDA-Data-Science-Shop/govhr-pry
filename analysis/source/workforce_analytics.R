@@ -21,7 +21,7 @@ theme_set(
 ggsave <- purrr::partial(
   ggplot2::ggsave,
   device = ragg::agg_png,
-  path = here::here("analysis", "figs"),
+  path = here::here("analysis", "figs", "workforce"),
   width = 9,
   height = 6
 )
@@ -299,10 +299,22 @@ movement |>
     names_to = "movement_type",
     values_to = "value"
   ) |>
+  mutate(
+    value = if_else(
+      movement_type == "hire_rate",
+      value,
+      -value
+    )
+  ) |>
   plot_trend(
     group_col = c("movement_type"),
     y_col = "value",
-    y_label = "Number of Movements"
+    y_label = "Movement Rate"
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
   ) +
   scale_color_manual(
     name = "Type of Movement",
@@ -347,7 +359,7 @@ sampled_est_ids <- headcount_by_est |>
   ) |>
   slice_max(
     order_by = headcount,
-    n = 9
+    n = 4
   ) |>
   pull(est_id)
 
@@ -355,21 +367,38 @@ movement_by_est |>
   filter(
     est_id %in% sampled_est_ids
   ) |>
+  # join establishment names for better visualization
+  left_join(
+    pry_est_name |> collect(),
+    by = c("est_id")
+  ) |>
   tidyr::pivot_longer(
     c(hire_rate, separation_rate),
     names_to = "movement_type",
     values_to = "value"
   ) |>
+  mutate(
+    value = if_else(
+      movement_type == "hire_rate",
+      value,
+      -value
+    )
+  ) |>
   plot_trend(
     group_col = c("movement_type"),
     y_col = "value",
-    y_label = "Number of Movements"
+    y_label = "Movement Rate"
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
   ) +
   scale_color_manual(
     name = "Type of Movement",
     labels = c(
-      "hire_rate" = "Hire Rate",
-      "separation_rate" = "Separation Rate"
+      "hire_rate" = "Hires",
+      "separation_rate" = "Separations"
     ),
     values = c(
       "hire_rate" = "#202d85",
@@ -383,13 +412,17 @@ movement_by_est |>
     legend.position = "bottom"
   ) +
   facet_wrap(
-    vars(est_id),
-    ncol = 3
+    vars(est_name_native),
+    ncol = 2,
+    scales = "free_y",
+    labeller = ggplot2::labeller(
+      est_name_native = \(x) stringr::str_wrap(x, width = 30)
+    )
   )
 
 ggplot2::ggsave(
   "workforce_movements_by_est.png",
-  path = here::here("analysis", "figs"),
+  path = here::here("analysis", "figs", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12
@@ -399,6 +432,10 @@ ggplot2::ggsave(
 movement_by_est |>
   filter(
     est_id %in% sampled_est_ids
+  ) |>
+  left_join(
+    pry_est_name |> collect(),
+    by = c("est_id")
   ) |>
   mutate(
     net_rate = hire_rate - separation_rate
@@ -424,12 +461,16 @@ movement_by_est |>
     labels = scales::percent_format(accuracy = 0.1)
   ) +
   facet_wrap(
-    vars(est_id)
+    vars(est_name_native),
+    scales = "free_y",
+    labeller = ggplot2::labeller(
+      est_name_native = \(x) stringr::str_wrap(x, width = 30)
+    )
   )
 
 ggplot2::ggsave(
   "workforce_net_movements_by_est.png",
-  path = here::here("analysis", "figs"),
+  path = here::here("analysis", "figs", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12
@@ -470,7 +511,31 @@ transitions_est |>
 
 ggplot2::ggsave(
   "workforce_transitions_by_est.png",
-  path = here::here("analysis", "figs"),
+  path = here::here("analysis", "figs", "workforce"),
+  device = ragg::agg_png,
+  width = 12,
+  height = 12
+)
+
+## ministry (adm2)
+transitions_ministry <- pry_contracts_executive |>
+  compute_transition(
+    id_col = "personnel_id",
+    group_cols = "adm2",
+    summarize = TRUE
+  ) |>
+  summarise(
+    weight = sum(transitions, na.rm = TRUE),
+    .by = c("from", "to")
+  ) |>
+  collect()
+
+transitions_ministry |>
+  plot_transition()
+
+ggplot2::ggsave(
+  "workforce_transitions_by_ministry.png",
+  path = here::here("analysis", "figs", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12
