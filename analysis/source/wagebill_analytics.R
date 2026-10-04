@@ -21,7 +21,7 @@ theme_set(
 ggsave <- purrr::partial(
   ggplot2::ggsave,
   device = ragg::agg_png,
-  path = here::here("analysis", "figs"),
+  path = here::here("analysis", "figs", "wagebill"),
   width = 9,
   height = 6
 )
@@ -359,7 +359,7 @@ wagebill_growth_decomposition <- pry_contracts_executive |>
 
 wagebill_growth_decomposition |>
   tidyr::pivot_longer(
-    c(employment_effect, compensation_effect, interaction_effect),
+    c(employment_effect, wage_effect, interaction_effect),
     names_to = "effect_type",
     values_to = "effect_value"
   ) |>
@@ -388,68 +388,75 @@ wagebill_growth_decomposition |>
     name = "Effect Type",
     labels = c(
       "employment_effect" = "Employment Effect",
-      "compensation_effect" = "Compensation Effect",
+      "wage_effect" = "Wage Effect",
       "interaction_effect" = "Interaction Effect"
     ),
     values = c(
       "employment_effect" = "#202d85",
-      "compensation_effect" = "#de4500",
+      "wage_effect" = "#de4500",
       "interaction_effect" = "#f5a623"
     )
   ) +
+  theme(
+    legend.position = "bottom"
+  ) +
   labs(
     x = "Time",
-    y = "Magnitude of Effect"
+    y = "Effect Magnitude"
   )
 
-# compensation
+ggsave(
+  "wagebill_growth_decomposition.png"
+)
+
+# wage
 ## overall
-pry_compensation <- pry_contracts_executive |>
-  compute_compensation(
+pry_wage <- pry_contracts_executive |>
+  compute_wage(
     measure_col = "gross_salary_lcu"
   ) |>
   collect()
 
-pry_compensation |>
+pry_wage |>
   plot_trend(
     group_col = c("ref_date"),
-    y_col = "compensation",
-    y_label = "Average compensation"
+    y_col = "wage",
+    y_label = "Average wage"
   )
 
 ## by salary component
-pry_compensation_by_component <- pry_contracts_executive |>
-  compute_compensation(
+pry_wage_by_component <- pry_contracts_executive |>
+  compute_wage(
     measure_col = "base_salary_lcu"
   ) |>
   select(
     ref_date,
-    compensation_base_salary = compensation
+    wage_base_salary = wage
   ) |>
   left_join(
     pry_contracts_executive |>
-      compute_compensation(
+      compute_wage(
         measure_col = "allowance_lcu"
       ) |>
       select(
         ref_date,
-        compensation_allowance = compensation
+        wage_allowance = wage
       ),
     by = "ref_date"
   ) |>
   collect()
 
-pry_compensation_by_component |>
+pry_wage_by_component |>
   tidyr::pivot_longer(
-    c(compensation_base_salary, compensation_allowance),
+    c(wage_base_salary, wage_allowance),
     names_to = "component",
-    values_to = "compensation"
+    values_to = "wage"
   ) |>
   mutate(
     component = recode(
       component,
-      "compensation_base_salary" = "Base Salary",
-      "compensation_allowance" = "Allowances"
+      "wage_base_salary" = "Base Salary",
+      "wage_allowance" = "Allowances"
     )
   ) |>
   mutate(
@@ -461,8 +468,8 @@ pry_compensation_by_component |>
   ) |>
   plot_trend(
     group_col = c("component"),
-    y_col = "compensation",
-    y_label = "Average compensation"
+    y_col = "wage",
+    y_label = "Average wage"
   ) +
   scale_color_manual(
     name = "Salary Component",
@@ -479,21 +486,21 @@ pry_compensation_by_component |>
   )
 
 ggsave(
-  "compensation_by_salary_component.png"
+  "wage_by_salary_component.png"
 )
 
 ## by contract type
-pry_compensation_by_contract <- pry_contracts_executive |>
+pry_wage_by_contract <- pry_contracts_executive |>
   filter(
     !is.na(contract_type)
   ) |>
-  compute_compensation(
+  compute_wage(
     measure_col = "gross_salary_lcu",
     group_cols = c("contract_type")
   ) |>
   collect()
 
-pry_compensation_by_contract |>
+pry_wage_by_contract |>
   mutate(
     contract_type = forcats::fct_relevel(
       contract_type,
@@ -507,8 +514,8 @@ pry_compensation_by_contract |>
   ) |>
   plot_trend(
     group_col = c("contract_type"),
-    y_col = "compensation",
-    y_label = "Average compensation (real ₲, Dec 2021)"
+    y_col = "wage",
+    y_label = "Average wage (real ₲, Dec 2021)"
   ) +
   geom_smooth(
     method = "lm",
@@ -531,11 +538,11 @@ pry_compensation_by_contract |>
   )
 
 ggsave(
-  "compensation_by_contract_type.png"
+  "wage_by_contract_type.png"
 )
 
 ## by gender
-pry_compensation_by_gender <- pry_contracts_executive |>
+pry_wage_by_gender <- pry_contracts_executive |>
   left_join(
     pry_personnel |>
       select(
@@ -548,13 +555,13 @@ pry_compensation_by_gender <- pry_contracts_executive |>
   filter(
     !is.na(gender)
   ) |>
-  compute_compensation(
+  compute_wage(
     measure_col = "gross_salary_lcu",
     group_cols = c("gender")
   ) |>
   collect()
 
-pry_compensation_by_gender |>
+pry_wage_by_gender |>
   mutate(
     gender = forcats::fct_relevel(
       gender,
@@ -564,8 +571,8 @@ pry_compensation_by_gender |>
   ) |>
   plot_trend(
     group_col = c("gender"),
-    y_col = "compensation",
-    y_label = "Average compensation (real ₲, Dec 2021)"
+    y_col = "wage",
+    y_label = "Average wage (real ₲, Dec 2021)"
   ) +
   geom_smooth(
     method = "lm",
@@ -588,19 +595,19 @@ pry_compensation_by_gender |>
   )
 
 ggsave(
-  "compensation_by_gender.png"
+  "wage_by_gender.png"
 )
 
-# compensation distribution
+# wage distribution
 ## overall
-compensation_distribution <- pry_contracts_executive |>
+wage_distribution <- pry_contracts_executive |>
  compute_density(
     measure_col = "gross_salary_lcu",
     binwidth = 1e6
   ) |>
   collect() 
 
-compensation_distribution |>
+wage_distribution |>
   plot_histogram(
     group_col = c("ref_date")
   ) +
@@ -614,11 +621,11 @@ compensation_distribution |>
   )
 
 ggsave(
-  "compensation_distribution.png"
+  "wage_distribution.png"
 )
 
 ## by gender
-compensation_distribution_by_gender <- pry_contracts_executive |>
+wage_distribution_by_gender <- pry_contracts_executive |>
   left_join(
     pry_personnel |>
       select(
@@ -638,7 +645,7 @@ compensation_distribution_by_gender <- pry_contracts_executive |>
   ) |>
   collect()
 
-compensation_distribution_by_gender |>
+wage_distribution_by_gender |>
   plot_histogram(
     group_col = c("gender")
   ) +
@@ -667,7 +674,7 @@ compensation_distribution_by_gender |>
   )
 
 ggsave(
-  "compensation_distribution_by_gender.png"
+  "wage_distribution_by_gender.png"
 )
 
 # wage composition

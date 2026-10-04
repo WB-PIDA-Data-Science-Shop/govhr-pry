@@ -240,19 +240,34 @@ headcount_by_age_group <- headcount_by_age |>
   )
 
 headcount_by_age_group |>
-  plot_trend(
-    group_col = "age_group",
-    y_col = "share_headcount",
-    y_label = "Share of Headcount"
+  ggplot() +
+  geom_area(
+    aes(
+      x = ref_date,
+      y = share_headcount,
+      fill = age_group
+    ),
+    position = "stack"
+  ) +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  labs(
+    x = "Year",
+    y = "Share of Headcount"
   ) +
   theme(
     legend.position = "bottom",
     legend.key.width = unit(1, "lines"),
     legend.key.height = unit(1, "lines")
   ) +
-  scale_color_brewer(palette = "Reds") +
+  scale_fill_brewer(palette = "Reds") +
   ggplot2::guides(
-    color = ggplot2::guide_legend(
+      fill = ggplot2::guide_legend(
       title = "Age Group",
       title.position = "top",
       ncol = 3,

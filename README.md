@@ -20,7 +20,7 @@ govhr-pry/
 ├── analysis/
 │   ├── source/
 │   │   ├── workforce_analytics.R   # headcount, composition, hires/separations, transitions
-│   │   ├── wagebill_analytics.R    # wage bill, growth decomposition, compensation
+│   │   ├── wagebill_analytics.R    # wage bill, growth decomposition, wages
 │   │   └── standard_analytics.R    # earlier combined script (workforce + CPI deflation)
 │   └── figs/                # PNG output of the analysis scripts
 ├── references/              # SFP data dictionary and MEF budget classifier (PGN 2026)
@@ -106,9 +106,9 @@ The analysis follows the standard `govhr` diagnostic of public-sector employment
 - Movements: monthly hire and separation rates, overall and for the nine largest establishments, plus net rates.
 - Career transitions: a network of moves between establishments.
 
-**Wage bill and compensation** ([wagebill_analytics.R](analysis/source/wagebill_analytics.R))
+**Wage bill and wages** ([wagebill_analytics.R](analysis/source/wagebill_analytics.R))
 - Wage bill level and growth: total, by establishment, and split into base salary and allowances.
 - Composition of the wage bill: share paid as base salary vs. allowances.
-- Growth decomposition of the wage bill into employment, compensation and interaction effects.
-- Average compensation: by salary component, contract type and gender.
-- Compensation distribution: overall and by gender.
+- Growth decomposition of the wage bill into employment, wage and interaction effects.
+- Average wage: by salary component, contract type and gender.
+- Wage distribution: overall and by gender.

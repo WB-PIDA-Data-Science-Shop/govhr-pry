@@ -95,22 +95,22 @@ compute_wagebill <- function(data, measure_col = "gross_salary_lcu", group_cols 
   wagebill
 }
 
-compute_compensation <- function(data, measure_col = "gross_salary_lcu", group_cols = NULL){
+compute_wage <- function(data, measure_col = "gross_salary_lcu", group_cols = NULL){
   if("ref_date" %in% group_cols){
     stop("`ref_date` should not be included in `group_cols`")
   }
 
   group_cols_with_date <- c(group_cols, "ref_date")
 
-  compensation <- data |>
+  wage <- data |>
     summarise(
-      compensation = mean(!!rlang::sym(measure_col), na.rm = TRUE),
+      wage = mean(!!rlang::sym(measure_col), na.rm = TRUE),
       .by = all_of(
         group_cols_with_date
       )
     )
 
-  compensation
+  wage
 }
 
 # distribution ------------------------------------------------------------
@@ -268,11 +268,11 @@ compute_density <- function(
 # definitions follow govhr:
 # - records with a missing measure or group value are dropped
 # - the group x date panel is completed, so unobserved periods have zero
-#   headcount and wagebill and a missing compensation
+#   headcount and wagebill and a missing wage
 # - transition_type is "exit" when the group is not observed; otherwise
 #   "start" in the first period, "entry" when it was not observed in the
 #   previous period and "continuing" when it was
-# - continuing groups decompose wagebill growth into employment, compensation
+# - continuing groups decompose wagebill growth into employment, wage
 #   and interaction effects. entry_effect is the wagebill at entry, and
 #   exit_effect is minus the previous wagebill at exit (zero in later periods
 #   of absence)
@@ -294,7 +294,7 @@ compute_growth_decomposition <- function(data, measure_col = "gross_salary_lcu",
     summarise(
       headcount = n(),
       wagebill = sum(!!measure, na.rm = TRUE),
-      compensation = mean(!!measure, na.rm = TRUE),
+      wage = mean(!!measure, na.rm = TRUE),
       .by = all_of(group_cols_with_date)
     )
 
@@ -331,7 +331,7 @@ compute_growth_decomposition <- function(data, measure_col = "gross_salary_lcu",
     ) |>
     mutate(
       headcount_lag = lag(headcount, order_by = ref_date),
-      compensation_lag = lag(compensation, order_by = ref_date),
+      wage_lag = lag(wage, order_by = ref_date),
       wagebill_lag = lag(wagebill, order_by = ref_date),
       observed_lag = lag(is_observed, order_by = ref_date),
       .by = all_of(group_cols)
@@ -347,12 +347,12 @@ compute_growth_decomposition <- function(data, measure_col = "gross_salary_lcu",
     ) |>
     mutate(
       # deltas are only defined for continuing groups, NA propagates to the
-      # employment, compensation and interaction effects
+      # employment, wage and interaction effects
       delta_headcount = if_else(transition_type == "continuing", headcount - headcount_lag, NA_real_),
-      delta_compensation = if_else(transition_type == "continuing", compensation - compensation_lag, NA_real_),
-      employment_effect = compensation_lag * delta_headcount,
-      compensation_effect = headcount_lag * delta_compensation,
-      interaction_effect = delta_headcount * delta_compensation,
+      delta_wage = if_else(transition_type == "continuing", wage - wage_lag, NA_real_),
+      employment_effect = wage_lag * delta_headcount,
+      wage_effect = headcount_lag * delta_wage,
+      interaction_effect = delta_headcount * delta_wage,
       entry_effect = if_else(transition_type == "entry", wagebill, NA_real_),
       exit_effect = if_else(
         transition_type == "exit",
@@ -362,15 +362,15 @@ compute_growth_decomposition <- function(data, measure_col = "gross_salary_lcu",
       # entry and exit effects are exclusive, and both are NA at start
       total_effect = if_else(
         transition_type == "continuing",
-        employment_effect + compensation_effect + interaction_effect,
+        employment_effect + wage_effect + interaction_effect,
         coalesce(entry_effect, exit_effect)
       )
     ) |>
     select(
       all_of(group_cols_with_date),
-      transition_type, headcount, headcount_lag, compensation, compensation_lag,
-      employment_effect, compensation_effect, interaction_effect, entry_effect,
-      delta_compensation, exit_effect, total_effect, wagebill, wagebill_lag,
+      transition_type, headcount, headcount_lag, wage, wage_lag,
+      employment_effect, wage_effect, interaction_effect, entry_effect,
+      delta_wage, exit_effect, total_effect, wagebill, wagebill_lag,
       is_observed, observed_lag
     )
 }
@@ -649,11 +649,15 @@ compute_transition <- function(
   transitions
 }
 
-cut_age <- function(age){
+cut_age <- function(
+  age,
+  breaks = c(-Inf, 20, 30, 40, 50, 60, Inf), 
+  labels = c("<20", "20-29", "30-39", "40-49", "50-59", "60+")
+){
   cut(
     age,
-    breaks = c(-Inf, 30, 40, 50, 60, Inf),
-    labels = c("<30", "30-39", "40-49", "50-59", "60+"),
+    breaks = breaks,
+    labels = labels,
     right = FALSE
   )
 }
