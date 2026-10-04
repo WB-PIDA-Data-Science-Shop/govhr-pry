@@ -119,4 +119,4 @@ The analysis adopts the standard `govhr` assessment of public sector workforce a
 - Wage bill growth: overall and by group, decomposition.
 - Wage: overall and by group.
 - Wage growth: overall and by group.
-- Wage structure: composition (base salary vs. allowances) and distribution.
+- Wage structure: composition (base salary vs. allowances) and distribution (histogram, compression ratio).
