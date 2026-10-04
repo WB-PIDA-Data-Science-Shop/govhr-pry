@@ -1,12 +1,14 @@
 # govhr-pry
 
-This repository cleans, harmonizes and analyzes Paraguay's public-sector HR microdata. 
+This repository cleans, harmonizes and analyzes Paraguay's payroll data. It comprises three main components:
 
-The data pipeline turns the monthly civil-servant payroll files published by the Secretaría de la Función Pública (SFP) into the standard [`govhr`](https://github.com/WB-PIDA-Data-Science-Shop/govhr) data modules (establishments, personnel, contracts).
-
-It then produces workforce and wage-bill analytics for the central government (Poder Ejecutivo).
+1. An ETL pipeline that extracts the monthly payroll files, harmonizes them and loads them into a database with the standard [`govhr`](https://github.com/WB-PIDA-Data-Science-Shop/govhr) data modules.
+2. An analytical pipeline that computes workforce and wage bill indicators.
+3. A set of applications that visualize the indicators and allow users to explore the data (to-do).
 
 ## Repository structure
+
+The repository is organized as follows:
 
 ```
 govhr-pry/
@@ -32,31 +34,37 @@ govhr-pry/
 
 ## Running the pipeline
 
-Run from the project root. `data/` must point to the shared data folder.
+The repository is fully reproducible from your local machine. The steps below reproduce components 1 and 2 outlined above:
 
 ```r
+# install.packages("renv") # if not already installed
+
 renv::restore()              # install pinned packages, including govhr
+
+# component 1. ETL pipeline
 source("etl/1-extract.R")    # ~140 monthly files
 source("etl/2-harmonize.R")  # rebuilds data/data-clean/govhr_pry.duckdb from scratch
+
+# component 2. Analytical pipeline
 source("analysis/source/workforce_analytics.R")
 source("analysis/source/wagebill_analytics.R")
-```
 
-Indicators in `R/analysis.R` are written so they run inside DuckDB (via dbplyr/duckplyr) rather than in memory. Each person-month is spread over several payroll lines, so the full panel is too large to load into R.
+# component 3. Applications (to-do)
+```
 
 ## Data
 
-**Source.** SFP open data, *Funcionarios* dataset ([datos.sfp.gov.py](https://datos.sfp.gov.py/data/funcionarios/download)). There is one file per month, and each row is one payroll line: a person × position × object of expenditure. A typical month has about 1.6M rows. The column definitions are in [references/diccionario_funcionarios.pdf](references/diccionario_funcionarios.pdf).
+**Source.** All data analyzed in this repository is publicly available in the SFP open data, *Funcionarios* dataset ([datos.sfp.gov.py](https://datos.sfp.gov.py/data/funcionarios/download)). There is one file per month, and each row is one payroll line: a person × position × object of expenditure. A typical month has about 1.6M rows. The column definitions are in [references/diccionario_funcionarios.pdf](references/diccionario_funcionarios.pdf).
 
-**Time frame.** The raw data is monthly, from January 2015 to August 2026 (140 months, no gaps). The analysis scripts restrict to **January 2016 to December 2025**, because the 2015 data appears to have gaps.
+**Time frame.** The raw data is monthly, from January 2015 to August 2026 (140 months).
 
-**Coverage.** The database includes all branches and levels of government in the SFP files (`adm1`). The analysis keeps only `adm1 == "PODER EJECUTIVO"`.
+**Coverage.** The database includes all branches and levels of government in the SFP files (`adm1`).
 
-**Wages.** All amounts are in nominal guaraníes (`_lcu`) and are taken from the budgeted amount (`presupuestado`). `harmonize_cpi()` downloads the monthly headline CPI (BCP series via the IMF, rebased to Dec 2021 = 100) for deflating to real terms.
+**Paychecks.** All paycheck amounts are in nominal guaraníes.
 
-### Modules (`data/data-clean/govhr_pry.duckdb`)
+### Modules
 
-All tables are monthly panels keyed by `ref_date` (first day of the month).
+All harmonized modules are monthly panels indexed by `ref_date` (first day of the month).
 
 #### `pry_est`: establishments (key: `est_id`, `ref_date`)
 
@@ -99,16 +107,16 @@ Only objects of expenditure in group 1 (*servicios personales*) count as pay. Se
 
 ## Analysis
 
-The analysis follows the standard `govhr` diagnostic of public-sector employment and pay. Each produces the figures in [analysis/figs/](analysis/figs/).
+The analysis adopts the standard `govhr` assessment of public sector workforce and wage bill. Each produces the figures in [analysis/figs/](analysis/figs/).
 
 **Workforce** ([workforce_analytics.R](analysis/source/workforce_analytics.R))
-- Headcount: total, by establishment, by contract type, and by age group.
-- Movements: monthly hire and separation rates, overall and for the nine largest establishments, plus net rates.
-- Career transitions: a network of moves between establishments.
+- Headcount: overall and by group.
+- Movements: external (hires and separations) and internal (transitions).
+- Lifecycle: public service expectancy and trajectory.
 
-**Wage bill and wages** ([wagebill_analytics.R](analysis/source/wagebill_analytics.R))
-- Wage bill level and growth: total, by establishment, and split into base salary and allowances.
-- Composition of the wage bill: share paid as base salary vs. allowances.
-- Growth decomposition of the wage bill into employment, wage and interaction effects.
-- Average wage: by salary component, contract type and gender.
-- Wage distribution: overall and by gender.
+**Wage bills** ([wagebill_analytics.R](analysis/source/wagebill_analytics.R))
+- Wage bill: overall and by group.
+- Wage bill growth: overall and by group, decomposition.
+- Wage: overall and by group.
+- Wage growth: overall and by group.
+- Wage structure: composition (base salary vs. allowances) and distribution.
