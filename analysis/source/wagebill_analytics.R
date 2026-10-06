@@ -21,13 +21,17 @@ theme_set(
 ggsave <- purrr::partial(
   ggplot2::ggsave,
   device = ragg::agg_png,
-  path = here::here("analysis", "figs"),
+  path = here::here("analysis", "figs", "executive"),
   width = 9,
   height = 6
 )
 
 source(
   here::here("R", "harmonize.R")
+)
+
+source(
+  here::here("R", "analysis.R")
 )
 
 set.seed(2026)
@@ -76,22 +80,9 @@ pry_contracts_executive <- pry_contracts |>
     ref_date >= as.Date("2016-01-01"),
     ref_date <= as.Date("2025-12-01")
   ) |>
-  mutate(
-    base_salary_lcu = deflate_to_real(
-      base_salary_lcu,
-      ref_date,
-      country_code = "PRY"
-    ),
-    allowance_lcu = deflate_to_real(
-      allowance_lcu,
-      ref_date,
-      country_code = "PRY"
-    ),
-    gross_salary_lcu = deflate_to_real(
-      gross_salary_lcu,
-      ref_date,
-      country_code = "PRY"
-    )
+  deflate_wages(
+    wage_cols = c("base_salary_lcu", "allowance_lcu", "gross_salary_lcu"),
+    country_code = "PRY"
   )
 
 pry_est_name <- pry_est_executive |>
