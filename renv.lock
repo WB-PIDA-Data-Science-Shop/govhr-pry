@@ -2221,12 +2221,12 @@
     },
     "govhr": {
       "Package": "govhr",
-      "Version": "0.4.0",
+      "Version": "0.4.1",
       "Source": "GitHub",
       "Type": "Package",
-      "Title": "Clean and analyze data that informs human resource management",
+      "Title": "Clean and analyze data to inform human resource management",
       "Description": "This package is a toolkit developed by the World Bank. It cleans, harmonizes, and analyzes human resource data with a standardized methodology.",
-      "License": "MIT + file LICENSE",
+      "License": "CC0",
       "Encoding": "UTF-8",
       "LazyData": "true",
       "LazyDataCompression": "xz",
@@ -2264,13 +2264,16 @@
         "ggstats"
       ],
       "Suggests": [
+        "DBI",
+        "dbplyr",
+        "duckdb",
         "readr",
         "testthat (>= 3.0.0)",
         "reactable"
       ],
       "Config/testthat/edition": "3",
       "Depends": [
-        "R (>= 3.5)"
+        "R (>= 4.1.0)"
       ],
       "URL": "https://wb-pida-data-science-shop.github.io/govhr/",
       "Config/Needs/website": "rmarkdown, remotes, polyglotr, AleKoure/labourR, DT, tidyr, here, tibble, arrow",
@@ -2284,7 +2287,7 @@
       "RemoteUsername": "WB-PIDA-Data-Science-Shop",
       "RemoteRepo": "govhr",
       "RemoteRef": "main",
-      "RemoteSha": "c1bbcb589a1fc51c7a8b9c1f2de0f186b3c01281"
+      "RemoteSha": "67810abf8b58dd6e73a104f7d7c47e5bbf402ce4"
     },
     "graphlayouts": {
       "Package": "graphlayouts",

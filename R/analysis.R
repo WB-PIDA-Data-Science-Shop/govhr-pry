@@ -763,63 +763,78 @@ plot_transition <- function(data){
 }
 
 # deflation ---------------------------------------------------------------
-# monthly replacement for govhr::deflate_to_real(), which matches the annual
-# CPI on the year only, so every month of a year shares one deflator: real
-# series jump down every january and drift up within the year.
+# replacement for govhr::deflate_to_real(), with the same arguments and
+# output: `col` in constant prices of `base_month`, using the CPI of each
+# value's own month. months without CPI are NA, with a warning.
 #
-# here each value is matched to the CPI of its own month, from the `cpi` table
-# returned by harmonize_cpi() (columns ref_date, country_code and cpi, rebased
-# to 100 in its base month), so values are in constant prices of that month,
-# december 2021 by default. `country_code` is either a scalar recycled across
-# all rows or a column of ISO3 codes. country-months without CPI are NA, with a
-# warning.
-deflate_to_real_monthly <- function(col, ref_date, country_code, cpi){
-  missing_cols <- setdiff(c("ref_date", "country_code", "cpi"), names(cpi))
-  if(length(missing_cols) > 0){
-    stop(
-      "`cpi` should be the output of harmonize_cpi(), missing columns: ",
-      paste(missing_cols, collapse = ", ")
-    )
-  }
-
-  # match on the month, so any day of the month finds its CPI
-  input_tbl <- tibble::tibble(
-    col = col,
-    ref_month = lubridate::floor_date(as.Date(ref_date), "month"),
-    country_code = country_code
-  )
-
-  cpi_lookup <- cpi |>
-    transmute(
-      ref_month = lubridate::floor_date(as.Date(ref_date), "month"),
-      country_code,
-      cpi
-    )
-
-  deflated <- input_tbl |>
-    left_join(
-      cpi_lookup,
-      by = c("country_code", "ref_month"),
-      relationship = "many-to-one"
-    )
-
-  no_cpi <- deflated |>
-    filter(
-      !is.na(col),
-      is.na(cpi)
+# govhr returns the joined values by position, but once duckplyr is attached
+# the join runs in duckdb, which does not keep row order, so values get the
+# CPI of other rows. here rows are sorted back by their id before returning.
+# deflator of each country-month: CPI of `base_month` over CPI of the month
+cpi_deflator <- function(base_month){
+  govhr::cpi |>
+    mutate(
+      deflator = cpi[match(as.Date(base_month), ref_date)] / cpi,
+      .by = country_code
     ) |>
-    distinct(country_code, ref_month)
+    select(country_code, ref_date, deflator)
+}
 
-  if(nrow(no_cpi) > 0){
+# deflates the `wage_cols` of `data` to constant prices of `base_month`, with
+# the CPI of `country_code` (an ISO3 code). ref_date is matched exactly to the
+# dates of govhr::cpi, which are the first of each month: other dates are NA.
+deflate_wages <- function(data, wage_cols, country_code, base_month = "2021-12-01"){
+  UseMethod("deflate_wages")
+}
+
+# match() looks deflators up by date, so rows keep their order even when
+# duckplyr is attached. columns are replaced outside of mutate(), so
+# `country_code` cannot be masked by a column of the same name
+deflate_wages.data.frame <- function(data, wage_cols, country_code, base_month = "2021-12-01"){
+  deflator <- cpi_deflator(base_month) |>
+    filter(
+      country_code == !!country_code
+    )
+
+  row_deflator <- deflator$deflator[match(data$ref_date, deflator$ref_date)]
+
+  no_cpi <- sort(unique(data$ref_date[is.na(row_deflator)]))
+
+  if(length(no_cpi) > 0){
     warning(
-      "No CPI for ", nrow(no_cpi), " country-month(s), deflated to NA: ",
-      paste(
-        utils::head(paste(no_cpi$country_code, format(no_cpi$ref_month, "%Y-%m")), 10),
-        collapse = ", "
-      ),
-      if(nrow(no_cpi) > 10) ", ..."
+      "No CPI for ", length(no_cpi), " ref_date(s), deflated to NA: ",
+      paste(utils::head(format(no_cpi), 10), collapse = ", "),
+      if(length(no_cpi) > 10) ", ..."
     )
   }
 
-  deflated$col * 100 / deflated$cpi
+  for(col in wage_cols){
+    data[[col]] <- data[[col]] * row_deflator
+  }
+
+  data
+}
+
+# the deflator is joined in duckdb, so the data stays in the database.
+# ref_dates without CPI are NA, without the warning of the data.frame method.
+deflate_wages.tbl_dbi <- function(data, wage_cols, country_code, base_month = "2021-12-01"){
+  deflator <- cpi_deflator(base_month) |>
+    filter(
+      country_code == !!country_code
+    ) |>
+    select(ref_date, deflator)
+
+  # copy = "inline" writes the deflator into the query itself, so no table is
+  # created on the connection. a table dropped after the join would break the
+  # query, which only runs later, on collect()
+  data |>
+    left_join(
+      deflator,
+      by = "ref_date",
+      copy = "inline"
+    ) |>
+    mutate(
+      across(all_of(wage_cols), \(col) col * deflator)
+    ) |>
+    select(-deflator)
 }
