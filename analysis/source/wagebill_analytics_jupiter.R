@@ -21,7 +21,7 @@ theme_set(
 ggsave <- purrr::partial(
   ggplot2::ggsave,
   device = ragg::agg_png,
-  path = here::here("analysis", "figs", "jupiter"),
+  path = here::here("analysis", "figs", "jupiter", "wagebill"),
   width = 9,
   height = 6
 )
