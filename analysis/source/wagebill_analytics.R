@@ -27,11 +27,11 @@ ggsave <- purrr::partial(
 )
 
 source(
-  here::here("R", "analysis.R")
+  here::here("R", "harmonize.R")
 )
 
 source(
-  here::here("R", "harmonize.R")
+  here::here("R", "analysis.R")
 )
 
 set.seed(2026)
@@ -80,43 +80,19 @@ pry_contracts_executive <- pry_contracts |>
     ref_date >= as.Date("2016-01-01"),
     ref_date <= as.Date("2025-12-01")
   ) |>
-  # deflate wages to real ₲ (december 2021 prices) with the CPI of each month
-  left_join(
-    copy_to(
-      con,
-      select(pry_cpi, ref_date, cpi),
-      "pry_cpi",
-      overwrite = TRUE
-    ),
-    by = "ref_date"
-  ) |>
-  mutate(
-    across(
-      c(base_salary_lcu, allowance_lcu, gross_salary_lcu),
-      ~ .x * 100 / cpi
-    )
+  deflate_wages(
+    wage_cols = c("base_salary_lcu", "allowance_lcu", "gross_salary_lcu"),
+    country_code = "PRY"
   )
-
-months_no_cpi <- pry_contracts_executive |>
-  filter(
-    is.na(cpi)
-  ) |>
-  distinct(ref_date) |>
-  pull(ref_date)
-
-if(length(months_no_cpi) > 0){
-  warning(
-    "No CPI for ", length(months_no_cpi), " month(s), wages deflated to NA: ",
-    paste(format(sort(months_no_cpi), "%Y-%m"), collapse = ", ")
-  )
-}
-
-pry_contracts_executive <- pry_contracts_executive |>
-  select(-cpi)
 
 pry_est_name <- pry_est_executive |>
-      distinct(est_id, .keep_all = TRUE) |>
-      select(est_id, est_name_native) 
+  distinct(
+    est_id, 
+    .keep_all = TRUE
+  ) |>
+  select(
+    est_id, est_name_native
+  )
 
 # wagebill analytics -----------------------------------------------------
 wagebill <- pry_contracts_executive |>
@@ -605,7 +581,7 @@ wage_distribution <- pry_contracts_executive |>
     measure_col = "gross_salary_lcu",
     binwidth = 1e6
   ) |>
-  collect() 
+  collect()
 
 wage_distribution |>
   plot_histogram(
@@ -719,7 +695,7 @@ wagebill_by_component <- wagebill_base_salary |>
     c(share_base_salary, share_allowance),
     names_to = "component",
     values_to = "share_wagebill"
-  ) 
+  )
 
 wagebill_by_component |>
   ggplot(
