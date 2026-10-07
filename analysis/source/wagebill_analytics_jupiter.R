@@ -51,7 +51,8 @@ pry_cpi <- harmonize_cpi("PRY")
 
 pry_est_judicial <- pry_est |>
   filter(
-    adm1 == "PODER JUDICIAL"
+    adm1 == "PODER JUDICIAL" &
+      est_name_native == "CORTE SUPREMA DE JUSTICIA (CSJ)"
   )
 
 pry_personnel <- pry_personnel |>
