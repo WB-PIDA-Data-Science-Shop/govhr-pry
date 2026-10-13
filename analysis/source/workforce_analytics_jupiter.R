@@ -152,7 +152,10 @@ administracion_superior <- headcount_by_occupation |>
   filter(
     stringr::str_detect(occupation, "JUEZ")
   ) |>
-  distinct(occupation)
+  distinct(occupation) |>
+  mutate(
+    occupation_group = "administracion superior"
+  )
 
 # ejecutivo superior
 ejecutivo_superior <- headcount_by_occupation |>
@@ -165,7 +168,10 @@ ejecutivo_superior <- headcount_by_occupation |>
     stringr::str_detect(occupation, "SUPERVISOR GENERAL") |
     stringr::str_detect(occupation, "DIRECTOR")
   ) |>
-  distinct(occupation)
+  distinct(occupation) |>
+  mutate(
+    occupation_group = "ejecutivo superior"
+  )
 
 # simplify occupation
 headcount_by_occupation_simplified <- headcount_by_occupation |>
@@ -349,26 +355,23 @@ movement_by_occupation <- pry_contracts_judicial |>
   ) |>
   collect()
 
-# to aid visualization, sample the 9 largest occupational families?
-sampled_est_ids <- headcount_by_est |>
-  summarise(
-    headcount = sum(headcount),
-    .by = c(est_id)
-  ) |>
-  slice_max(
-    order_by = headcount,
-    n = 4
-  ) |>
-  pull(est_id)
-
-movement_by_est |>
-  filter(
-    est_id %in% sampled_est_ids
-  ) |>
-  # join establishment names for better visualization
+movement_by_occupation |>
   left_join(
-    pry_est_name |> collect(),
-    by = c("est_id")
+    administracion_superior |> 
+      bind_rows(ejecutivo_superior),
+    by = "occupation"
+  ) |>
+  summarise(
+    hire_rate = sum(hires)/sum(headcount),
+    separation_rate = sum(separations)/sum(headcount),
+    .by = c("occupation_group", "ref_date")
+  ) |>
+  mutate(
+    occupation_group = if_else(
+      is.na(occupation_group),
+      "other",
+      occupation_group
+    )
   ) |>
   tidyr::pivot_longer(
     c(hire_rate, separation_rate),
@@ -410,17 +413,16 @@ movement_by_est |>
     legend.position = "bottom"
   ) +
   facet_wrap(
-    vars(est_name_native),
-    ncol = 2,
-    scales = "free_y",
+    vars(occupation_group),
+    ncol = 3,
     labeller = ggplot2::labeller(
-      est_name_native = \(x) stringr::str_wrap(x, width = 30)
+      occupation_group = \(x) stringr::str_wrap(x, width = 30)
     )
   )
 
 ggplot2::ggsave(
-  "workforce_movements_by_est.png",
-  path = here::here("analysis", "figs", "workforce"),
+  "workforce_movements_by_occupation_group.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12
