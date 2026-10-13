@@ -338,20 +338,18 @@ ggsave(
   "workforce_movements.png"
 )
 
-## by establishment
-movement_by_est <- pry_contracts_judicial |>
-  mutate(
-    employment_status = "active"
+## by occupation
+movement_by_occupation <- pry_contracts_judicial |>
+  left_join(
+    pry_personnel |> select(personnel_id, ref_date, employment_status),
+    by = c("personnel_id", "ref_date")
   ) |>
   compute_movement(
-    group_cols = c("est_id")
-  ) |>
-  mutate(
-    replacement_rate = hires / separations
+    group_cols = c("occupation")
   ) |>
   collect()
 
-# to aid visualization, sample the 9 largest establishments
+# to aid visualization, sample the 9 largest occupational families?
 sampled_est_ids <- headcount_by_est |>
   summarise(
     headcount = sum(headcount),
