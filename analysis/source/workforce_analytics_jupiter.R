@@ -5,12 +5,12 @@ library(ggplot2)
 library(govhr)
 
 # download Lato from Google Fonts (if needed) and register it with systemfonts
-systemfonts::require_font("Lato")
+systemfonts::require_font("Roboto")
 
 theme_set(
   theme_classic(
     base_size = 14,
-    base_family = "Lato"
+    base_family = "Roboto"
   ) +
     theme(
       panel.grid = element_blank(),
@@ -46,13 +46,10 @@ pry_est <- tbl(con, "pry_est")
 pry_personnel <- tbl(con, "pry_personnel")
 pry_contracts <- tbl(con, "pry_contracts")
 
-# monthly CPI, december 2021 = 100
-pry_cpi <- harmonize_cpi("PRY")
-
-pry_est_executive <- pry_est |>
+pry_est_judicial <- pry_est |>
   filter(
     adm1 == "PODER JUDICIAL" &
-      est_name_native == "CORTE SUPREMA DE JUSTICIA (CSJ)"
+      adm2 == "CORTE SUPREMA DE JUSTICIA"
   )
 
 pry_personnel <- pry_personnel |>
@@ -64,17 +61,14 @@ pry_personnel <- pry_personnel |>
     ref_date <= as.Date("2025-12-01")
   )
 
-pry_contracts_executive <- pry_contracts |>
+pry_contracts_judicial <- pry_contracts |>
   inner_join(
-    pry_est_executive,
+    pry_est_judicial,
     by = c("est_id", "ref_date")
   ) |>
   mutate(
     ref_date = as.Date(ref_date),
-    across(
-      c(base_salary_lcu, allowance_lcu, gross_salary_lcu, whours),
-      as.double
-    )
+    whours = as.double(whours)
   ) |>
   # there seems to be data gaps before 2016
   filter(
@@ -82,21 +76,16 @@ pry_contracts_executive <- pry_contracts |>
     ref_date <= as.Date("2025-12-01")
   )
 
-pry_est_name <- pry_est_executive |>
-      distinct(est_id, .keep_all = TRUE) |>
-      select(est_id, est_name_native) 
+pry_est_name <- pry_est_judicial |>
+  distinct(est_id, .keep_all = TRUE) |>
+  select(
+    est_id, est_name_native
+  )
 
 # workforce analytics ----------------------------------------------------
 # headcount
-headcount <- pry_contracts_executive |>
-  summarise(
-    headcount = n_distinct(personnel_id),
-    .by = c(ref_date)
-  ) |>
-  mutate(
-    ref_date = as.Date(ref_date)
-  ) |>
-  collect()
+headcount <- pry_contracts_judicial |>
+  govhr::compute_headcount()
 
 headcount |>
   ggplot(
@@ -114,7 +103,7 @@ headcount |>
     labels = scales::comma_format()
   ) +
   coord_cartesian(
-    ylim = c(0, NA)
+    ylim = c(1.2e4, 1.5e4)
   ) +
   labs(
     x = "Headcount",
@@ -126,78 +115,88 @@ ggsave(
 )
 
 # composition
-# by establishment
-headcount_by_est <- pry_contracts_executive |>
+#  by occupation
+headcount_by_occupation <- pry_contracts_judicial |>
   compute_headcount(
-    group_cols = c("est_id")
+    group_cols = c("occupation")
   ) |>
-  left_join(
-    # only use original establishment name
-    pry_est_executive |>
-      distinct(est_id, .keep_all = TRUE) |>
-      select(est_id, est_name_native),
-    by = c("est_id")
-  ) |>
-  collect() |>
-  arrange(
-    est_id, ref_date
-  )
+  collect()
 
-headcount_by_est |>
+# miembro de tribunal
+miembro_de_tribunal <- headcount_by_occupation |>
+  filter(
+    stringr::str_detect(occupation, "MIEMBRO"),
+    stringr::str_detect(occupation, "TRIB")
+  ) |>
+  distinct(occupation)
+
+# juez de primera instancia
+juez_de_primera_instancia <- headcount_by_occupation |>
+  filter(
+    stringr::str_detect(occupation, "JUEZ"),
+    stringr::str_detect(occupation, "PRIMERA|1"),
+    stringr::str_detect(occupation, "INST")
+  ) |>
+  distinct(occupation)
+
+# juez de paz
+juez_de_paz <- headcount_by_occupation |>
+  filter(
+    stringr::str_detect(occupation, "JUEZ"),
+    stringr::str_detect(occupation, "PAZ")
+  ) |>
+  distinct(occupation)
+
+# administration superior
+administracion_superior <- headcount_by_occupation |>
+  filter(
+    stringr::str_detect(occupation, "JUEZ")
+  ) |>
+  distinct(occupation)
+
+# ejecutivo superior
+ejecutivo_superior <- headcount_by_occupation |>
+  filter(
+    stringr::str_detect(occupation, "CONTADOR GENERAL") |
+    stringr::str_detect(occupation, "CONTADOR GRAL.") |
+    stringr::str_detect(occupation, "COORDINADOR") |
+    stringr::str_detect(occupation, "SECRETARIO JUD") |
+    stringr::str_detect(occupation, "SECRETARIO GENERAL") |
+    stringr::str_detect(occupation, "SUPERVISOR GENERAL") |
+    stringr::str_detect(occupation, "DIRECTOR")
+  ) |>
+  distinct(occupation)
+
+# simplify occupation
+headcount_by_occupation_simplified <- headcount_by_occupation |>
   mutate(
-    est_name_native = forcats::fct_lump(
-      est_name_native,
-      n = 6,
+    occupation = forcats::fct_lump_n(
+      occupation,
       w = headcount,
-      other_level = "Other"
-    ) |>
-      forcats::fct_reorder(
-        headcount,
-        .fun = sum,
-        .desc = TRUE
-      )
+      n = 10
+    )
   ) |>
   summarise(
     headcount = sum(headcount),
-    .by = c(ref_date, est_name_native)
-  ) |>
-  # wrap long establishment names so they fit in the legend
-  mutate(
-    est_name_native = forcats::fct_relabel(
-      est_name_native,
-      \(x) stringr::str_wrap(x, width = 30)
-    )
-  ) |>
-  plot_trend(
-    group_col = "est_name_native",
-    y_col = "headcount",
-    y_label = "Headcount"
-  ) +
-  theme(
-    legend.position = "bottom",
-    legend.key.width = unit(1, "lines"),
-    legend.key.height = unit(1, "lines")
-  ) +
-  ggthemes::scale_color_solarized() +
-  ggplot2::guides(
-    color = ggplot2::guide_legend(
-      title = "Establishment",
-      title.position = "top",
-      ncol = 3,
-      override.aes = list(linewidth = 6)
-    )
+    share_headcount = sum(share_headcount),
+    .by = c(occupation, ref_date)
   )
 
-ggplot2::ggsave(
-  "headcount_by_est.png",
-  path = here::here("analysis", "figs"),
-  device = ragg::agg_png,
-  width = 12,
-  height = 9
-)
+headcount_by_occupation_simplified |>
+  filter(
+    occupation != "Other"
+  ) |>
+  ggplot() +
+  geom_line(
+    aes(ref_date, headcount)
+  ) +
+  facet_wrap(
+    vars(occupation),
+    nrow = 3
+  )
 
 # by contract type
-headcount_by_contract_type <- pry_contracts_executive |>
+headcount_by_contract_type <- pry_contracts_judicial |>
   compute_headcount(
     group_cols = c("contract_type")
   ) |>
@@ -208,12 +207,12 @@ headcount_by_contract_type |>
     group_col = "contract_type",
     y_col = "headcount",
     y_label = "Headcount"
-  ) 
+  )
 
 # by age
 headcount_by_age <- pry_personnel |>
   inner_join(
-    pry_contracts_executive |>
+    pry_contracts_judicial |>
       distinct(personnel_id, ref_date),
     by = c("personnel_id", "ref_date")
   ) |>
@@ -268,7 +267,7 @@ headcount_by_age_group |>
   ) +
   scale_fill_brewer(palette = "Reds") +
   ggplot2::guides(
-      fill = ggplot2::guide_legend(
+    fill = ggplot2::guide_legend(
       title = "Age Group",
       title.position = "top",
       ncol = 3,
@@ -282,7 +281,7 @@ ggsave(
 
 # movements
 ## overall
-movement <- pry_contracts_executive |>
+movement <- pry_contracts_judicial |>
   mutate(
     employment_status = "active"
   ) |>
@@ -340,7 +339,7 @@ ggsave(
 )
 
 ## by establishment
-movement_by_est <- pry_contracts_executive |>
+movement_by_est <- pry_contracts_judicial |>
   mutate(
     employment_status = "active"
   ) |>
@@ -479,13 +478,13 @@ ggplot2::ggsave(
 
 # transition
 ## establishment
-transitions_est <- pry_contracts_executive |>
+transitions_est <- pry_contracts_judicial |>
   compute_transition(
     id_col = "personnel_id",
     group_cols = "est_id",
     summarize = TRUE
   )
-  
+
 transitions_est <- transitions_est |>
   left_join(
     pry_est_name,
@@ -519,7 +518,7 @@ ggplot2::ggsave(
 )
 
 ## ministry (adm2)
-transitions_ministry <- pry_contracts_executive |>
+transitions_ministry <- pry_contracts_judicial |>
   compute_transition(
     id_col = "personnel_id",
     group_cols = "adm2",
