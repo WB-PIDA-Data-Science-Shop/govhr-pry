@@ -4,13 +4,13 @@ library(duckplyr)
 library(ggplot2)
 library(govhr)
 
-# download Lato from Google Fonts (if needed) and register it with systemfonts
-systemfonts::require_font("Lato")
+# download Roboto from Google Fonts (if needed) and register it with systemfonts
+systemfonts::require_font("Roboto")
 
 theme_set(
   theme_classic(
     base_size = 14,
-    base_family = "Lato"
+    base_family = "Roboto"
   ) +
     theme(
       panel.grid = element_blank(),
