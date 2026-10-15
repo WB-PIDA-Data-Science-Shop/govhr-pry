@@ -64,7 +64,7 @@ pry_personnel <- pry_personnel |>
     ref_date <= as.Date("2025-12-01")
   )
 
-pry_contracts_executive <- pry_contracts |>
+pry_contracts_judicial <- pry_contracts |>
   inner_join(
     pry_est_executive,
     by = c("est_id", "ref_date")
@@ -88,7 +88,7 @@ pry_est_name <- pry_est_executive |>
 
 # workforce analytics ----------------------------------------------------
 # headcount
-headcount <- pry_contracts_executive |>
+headcount <- pry_contracts_judicial |>
   summarise(
     headcount = n_distinct(personnel_id),
     .by = c(ref_date)
@@ -127,7 +127,7 @@ ggsave(
 
 # composition
 # by establishment
-headcount_by_est <- pry_contracts_executive |>
+headcount_by_est <- pry_contracts_judicial |>
   compute_headcount(
     group_cols = c("est_id")
   ) |>
@@ -190,14 +190,14 @@ headcount_by_est |>
 
 ggplot2::ggsave(
   "headcount_by_est.png",
-  path = here::here("analysis", "figs"),
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 9
 )
 
 # by contract type
-headcount_by_contract_type <- pry_contracts_executive |>
+headcount_by_contract_type <- pry_contracts_judicial |>
   compute_headcount(
     group_cols = c("contract_type")
   ) |>
@@ -213,7 +213,7 @@ headcount_by_contract_type |>
 # by age
 headcount_by_age <- pry_personnel |>
   inner_join(
-    pry_contracts_executive |>
+    pry_contracts_judicial |>
       distinct(personnel_id, ref_date),
     by = c("personnel_id", "ref_date")
   ) |>
@@ -282,13 +282,11 @@ ggsave(
 
 # movements
 ## overall
-movement <- pry_contracts_executive |>
+movement <- pry_contracts_judicial |>
   mutate(
     employment_status = "active"
   ) |>
-  compute_movement(
-    group_cols = c("ref_date")
-  ) |>
+  compute_movement() |>
   mutate(
     replacement_rate = hires / separations
   ) |>
@@ -340,7 +338,7 @@ ggsave(
 )
 
 ## by establishment
-movement_by_est <- pry_contracts_executive |>
+movement_by_est <- pry_contracts_judicial |>
   mutate(
     employment_status = "active"
   ) |>
@@ -423,7 +421,7 @@ movement_by_est |>
 
 ggplot2::ggsave(
   "workforce_movements_by_est.png",
-  path = here::here("analysis", "figs", "workforce"),
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12
@@ -471,72 +469,44 @@ movement_by_est |>
 
 ggplot2::ggsave(
   "workforce_net_movements_by_est.png",
-  path = here::here("analysis", "figs", "workforce"),
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12
 )
 
 # transition
-## establishment
-transitions_est <- pry_contracts_executive |>
+## occupation
+transitions_occupation <- pry_contracts_judicial |>
+  # subset to the 50 largest occupations by headcount
+  inner_join(
+    pry_contracts_judicial |>
+      compute_headcount(
+        group_cols = c("occupation")
+      ) |>
+      summarise(
+        headcount = sum(headcount),
+        .by = c(occupation)
+      ) |>
+      slice_max(
+        order_by = headcount,
+        n = 50
+      ) |>
+      select(occupation),
+    by = "occupation"
+  ) |>
   compute_transition(
     id_col = "personnel_id",
-    group_cols = "est_id",
+    group_cols = "occupation",
     summarize = TRUE
   )
-  
-transitions_est <- transitions_est |>
-  left_join(
-    pry_est_name,
-    by = c("from" = "est_id")
-  ) |>
-  left_join(
-    pry_est_name,
-    by = c("to" = "est_id"),
-    suffix = c("_from", "_to")
-  ) |>
-  select(
-    from = est_name_native_from,
-    to = est_name_native_to,
-    transitions
-  ) |>
-  summarise(
-    weight = sum(transitions, na.rm = TRUE),
-    .by = c("from", "to")
-  ) |>
-  collect()
 
-transitions_est |>
-  plot_transition()
+transitions_occupation |>
+  plot_transition_network()
 
 ggplot2::ggsave(
-  "workforce_transitions_by_est.png",
-  path = here::here("analysis", "figs", "workforce"),
-  device = ragg::agg_png,
-  width = 12,
-  height = 12
-)
-
-## ministry (adm2)
-transitions_ministry <- pry_contracts_executive |>
-  compute_transition(
-    id_col = "personnel_id",
-    group_cols = "adm2",
-    summarize = TRUE
-  ) |>
-  summarise(
-    weight = sum(transitions, na.rm = TRUE),
-    .by = c("from", "to")
-  ) |>
-  collect()
-
-transitions_ministry |>
-  plot_transition()
-
-ggplot2::ggsave(
-  "workforce_transitions_by_ministry.png",
-  path = here::here("analysis", "figs", "workforce"),
+  "workforce_transitions_by_occupation.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12

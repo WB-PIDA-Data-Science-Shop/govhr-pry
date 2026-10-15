@@ -74,3 +74,21 @@ deflate_wages.tbl_dbi <- function(data, wage_cols, country_code, base_month = "2
     ) |>
     select(-deflator)
 }
+
+cut_age <- function(age){
+  # by decade from 20-60+
+  cut(
+    age,
+    breaks = c(0, seq(20, 60, by = 10), Inf),
+    right = FALSE,
+    include.lowest = TRUE,
+    labels = c(
+      "<20",
+      "20-29",
+      "30-39",
+      "40-49",
+      "50-59",
+      "60+"
+    )
+  )
+}
