@@ -1,6 +1,8 @@
-harmonize_hr <- function(year, files, db_path){
+harmonize_hr <- function(year, files, db_path) {
   message(
-    "Harmonizing data for year ", year, "..."
+    "Harmonizing data for year ",
+    year,
+    "..."
   )
 
   funcionarios <- files |>
@@ -14,11 +16,27 @@ harmonize_hr <- function(year, files, db_path){
       ),
       # only read the columns used below
       col_select = c(
-        anho, mes,
-        nivel, descripcion_nivel, entidad, descripcion_entidad, oee, descripcion_oee,
-        documento, fecha_nacimiento, anho_ingreso, sexo,
-        estado, categoria, funcion, cargo, carga_horaria,
-        objeto_gasto, concepto, presupuestado, devengado
+        anho,
+        mes,
+        nivel,
+        descripcion_nivel,
+        entidad,
+        descripcion_entidad,
+        oee,
+        descripcion_oee,
+        documento,
+        fecha_nacimiento,
+        anho_ingreso,
+        sexo,
+        estado,
+        categoria,
+        funcion,
+        cargo,
+        carga_horaria,
+        objeto_gasto,
+        concepto,
+        presupuestado,
+        devengado
       )
     )
 
@@ -189,21 +207,25 @@ harmonize_hr <- function(year, files, db_path){
     ),
     db_path = db_path
   )
-  
+
   message(
-    "Finished harmonizing data for year ", year, "."
+    "Finished harmonizing data for year ",
+    year,
+    "."
   )
 }
 
 # append each table to duckdb; only one process can write at a time,
 # so retry until the file lock is released
-append_to_duckdb <- function(tables, db_path){
+append_to_duckdb <- function(tables, db_path) {
   repeat {
     con <- tryCatch(
       DBI::dbConnect(duckdb::duckdb(), db_path),
       error = function(e) NULL
     )
-    if (!is.null(con)) break
+    if (!is.null(con)) {
+      break
+    }
     Sys.sleep(5)
   }
 
@@ -230,10 +252,10 @@ append_to_duckdb <- function(tables, db_path){
 #
 # reference: https://data.imf.org/en/datasets/IMF.STA:CPI
 # access date: 10/3/2026
-harmonize_cpi <- function(country_code = NULL, base_date = "2021-12-01"){
+harmonize_cpi <- function(country_code = NULL, base_date = "2021-12-01") {
   # series key: country, CPI, all items (_T), index (IX), monthly (M). countries
   # are joined with "+", and "*" matches all of them
-  country_key <- if(is.null(country_code)){
+  country_key <- if (is.null(country_code)) {
     "*"
   } else {
     paste(country_code, collapse = "+")
@@ -241,7 +263,8 @@ harmonize_cpi <- function(country_code = NULL, base_date = "2021-12-01"){
 
   url <- paste0(
     "https://api.imf.org/external/sdmx/3.0/data/dataflow/IMF.STA/CPI/+/",
-    country_key, ".CPI._T.IX.M"
+    country_key,
+    ".CPI._T.IX.M"
   )
 
   cpi_raw <- httr2::request(url) |>
@@ -258,9 +281,10 @@ harmonize_cpi <- function(country_code = NULL, base_date = "2021-12-01"){
     )
 
   missing_countries <- setdiff(country_code, cpi_raw$COUNTRY)
-  if(length(missing_countries) > 0){
+  if (length(missing_countries) > 0) {
     warning(
-      "No monthly CPI for ", paste(missing_countries, collapse = ", ")
+      "No monthly CPI for ",
+      paste(missing_countries, collapse = ", ")
     )
   }
 
@@ -288,10 +312,13 @@ harmonize_cpi <- function(country_code = NULL, base_date = "2021-12-01"){
     )
 
   no_base_countries <- setdiff(cpi$country_code, base_cpi$country_code)
-  if(length(no_base_countries) > 0){
+  if (length(no_base_countries) > 0) {
     warning(
-      "No CPI in ", format(base_date, "%Y-%m"), " for ",
-      paste(no_base_countries, collapse = ", "), ": `cpi` is missing"
+      "No CPI in ",
+      format(base_date, "%Y-%m"),
+      " for ",
+      paste(no_base_countries, collapse = ", "),
+      ": `cpi` is missing"
     )
   }
 
@@ -306,4 +333,26 @@ harmonize_cpi <- function(country_code = NULL, base_date = "2021-12-01"){
     ) |>
     select(-base_cpi) |>
     arrange(country_code, ref_date)
+}
+
+cut_age <- function(age) {
+  cut(
+    age,
+    breaks = c(0, 30, 40, 50, 60, Inf),
+    labels = c("<30", "30-39", "40-49", "50-59", "60+"),
+    right = FALSE
+  )
+}
+
+classify_age_group <- function(data) {
+  data |>
+    mutate(
+      age_group = case_when(
+        age < 30 ~ "<30",
+        age >= 30 & age < 40 ~ "30-39",
+        age >= 40 & age < 50 ~ "40-49",
+        age >= 50 & age < 60 ~ "50-59",
+        age >= 60 ~ "60+"
+      )
+    )
 }

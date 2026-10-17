@@ -34,6 +34,10 @@ source(
   here::here("R", "harmonize.R")
 )
 
+source(
+  here::here("R", "occupation.R")
+)
+
 set.seed(2026)
 
 # read-in ----------------------------------------------------------------
@@ -75,6 +79,10 @@ pry_contracts_judicial <- pry_contracts |>
     ref_date >= as.Date("2016-01-01"),
     ref_date <= as.Date("2025-12-01")
   )
+
+# simplify occupation groups
+pry_contracts_judicial <- pry_contracts_judicial |>
+  classify_occupation_group()
 
 pry_est_name <- pry_est_judicial |>
   distinct(est_id, .keep_all = TRUE) |>
@@ -121,57 +129,6 @@ headcount_by_occupation <- pry_contracts_judicial |>
     group_cols = c("occupation")
   ) |>
   collect()
-
-# miembro de tribunal
-miembro_de_tribunal <- headcount_by_occupation |>
-  filter(
-    stringr::str_detect(occupation, "MIEMBRO"),
-    stringr::str_detect(occupation, "TRIB")
-  ) |>
-  distinct(occupation)
-
-# juez de primera instancia
-juez_de_primera_instancia <- headcount_by_occupation |>
-  filter(
-    stringr::str_detect(occupation, "JUEZ"),
-    stringr::str_detect(occupation, "PRIMERA|1"),
-    stringr::str_detect(occupation, "INST")
-  ) |>
-  distinct(occupation)
-
-# juez de paz
-juez_de_paz <- headcount_by_occupation |>
-  filter(
-    stringr::str_detect(occupation, "JUEZ"),
-    stringr::str_detect(occupation, "PAZ")
-  ) |>
-  distinct(occupation)
-
-# administration superior
-administracion_superior <- headcount_by_occupation |>
-  filter(
-    stringr::str_detect(occupation, "JUEZ")
-  ) |>
-  distinct(occupation) |>
-  mutate(
-    occupation_group = "administracion superior"
-  )
-
-# ejecutivo superior
-ejecutivo_superior <- headcount_by_occupation |>
-  filter(
-    stringr::str_detect(occupation, "CONTADOR GENERAL") |
-    stringr::str_detect(occupation, "CONTADOR GRAL.") |
-    stringr::str_detect(occupation, "COORDINADOR") |
-    stringr::str_detect(occupation, "SECRETARIO JUD") |
-    stringr::str_detect(occupation, "SECRETARIO GENERAL") |
-    stringr::str_detect(occupation, "SUPERVISOR GENERAL") |
-    stringr::str_detect(occupation, "DIRECTOR")
-  ) |>
-  distinct(occupation) |>
-  mutate(
-    occupation_group = "ejecutivo superior"
-  )
 
 # simplify occupation
 headcount_by_occupation_simplified <- headcount_by_occupation |>
@@ -233,9 +190,9 @@ headcount_by_age_group <- headcount_by_age |>
     !is.na(age)
   ) |>
   mutate(
-    age = as.numeric(age),
-    age_group = cut_age(age)
+    age = as.numeric(age)
   ) |>
+  classify_age_group() |>
   summarise(
     headcount = sum(headcount),
     .by = c(ref_date, age_group)
@@ -291,12 +248,7 @@ movement <- pry_contracts_judicial |>
   mutate(
     employment_status = "active"
   ) |>
-  compute_movement(
-    group_cols = c("ref_date")
-  ) |>
-  mutate(
-    replacement_rate = hires / separations
-  ) |>
+  compute_movement() |>
   collect()
 
 movement |>
@@ -351,28 +303,11 @@ movement_by_occupation <- pry_contracts_judicial |>
     by = c("personnel_id", "ref_date")
   ) |>
   compute_movement(
-    group_cols = c("occupation")
+    group_cols = c("occupation_group")
   ) |>
   collect()
 
 movement_by_occupation |>
-  left_join(
-    administracion_superior |> 
-      bind_rows(ejecutivo_superior),
-    by = "occupation"
-  ) |>
-  summarise(
-    hire_rate = sum(hires)/sum(headcount),
-    separation_rate = sum(separations)/sum(headcount),
-    .by = c("occupation_group", "ref_date")
-  ) |>
-  mutate(
-    occupation_group = if_else(
-      is.na(occupation_group),
-      "other",
-      occupation_group
-    )
-  ) |>
   tidyr::pivot_longer(
     c(hire_rate, separation_rate),
     names_to = "movement_type",
@@ -414,7 +349,7 @@ movement_by_occupation |>
   ) +
   facet_wrap(
     vars(occupation_group),
-    ncol = 3,
+    ncol = 2,
     labeller = ggplot2::labeller(
       occupation_group = \(x) stringr::str_wrap(x, width = 30)
     )
@@ -429,21 +364,20 @@ ggplot2::ggsave(
 )
 
 ## net rate
-movement_by_est |>
-  filter(
-    est_id %in% sampled_est_ids
-  ) |>
-  left_join(
-    pry_est_name |> collect(),
-    by = c("est_id")
-  ) |>
+movement_by_occupation |>
   mutate(
     net_rate = hire_rate - separation_rate
   ) |>
-  plot_trend(
-    group_col = c("est_id"),
-    y_col = "net_rate",
-    y_label = "Net Change in Headcount"
+  mutate(
+    net_rate_sign = if_else(net_rate >= 0, "positive", "negative")
+  ) |>
+  ggplot() +
+  geom_col(
+    aes(
+      x = ref_date,
+      y = net_rate,
+      fill = net_rate_sign
+    )
   ) +
   geom_hline(
     yintercept = 0,
@@ -453,90 +387,315 @@ movement_by_est |>
   theme(
     legend.position = "none"
   ) +
-  # set same color for all lines
-  scale_color_manual(
-    values = rep("#d99e73", length(sampled_est_ids))
+  # different colors depending on whether net rate is positive or negative
+  scale_fill_manual(
+    values = c(
+      "positive" = "#202d85",
+      "negative" = "#de4500"
+    )
   ) +
   scale_y_continuous(
     labels = scales::percent_format(accuracy = 0.1)
   ) +
+  labs(
+    x = "Year",
+    y = "Net Movement Rate"
+  ) +
   facet_wrap(
-    vars(est_name_native),
-    scales = "free_y",
+    vars(occupation_group),
     labeller = ggplot2::labeller(
-      est_name_native = \(x) stringr::str_wrap(x, width = 30)
+      occupation_group = \(x) stringr::str_wrap(x, width = 30)
     )
   )
 
 ggplot2::ggsave(
-  "workforce_net_movements_by_est.png",
-  path = here::here("analysis", "figs", "workforce"),
+  "workforce_net_movements_by_occupation_group.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12
+)
+
+## by age group
+movement_by_age_group <- pry_contracts_judicial |>
+  left_join(
+    pry_personnel |> select(personnel_id, ref_date, employment_status, age),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  filter(
+    !is.na(age)
+  ) |>
+  classify_age_group() |>
+  compute_movement(
+    group_cols = c("age_group")
+  ) |>
+  collect()
+
+movement_by_age_group |>
+  tidyr::pivot_longer(
+    c(hire_rate, separation_rate),
+    names_to = "movement_type",
+    values_to = "value"
+  ) |>
+  mutate(
+    value = if_else(
+      movement_type == "hire_rate",
+      value,
+      -value
+    )
+  ) |>
+  plot_trend(
+    group_col = c("movement_type"),
+    y_col = "value",
+    y_label = "Movement Rate"
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  scale_color_manual(
+    name = "Type of Movement",
+    labels = c(
+      "hire_rate" = "Hires",
+      "separation_rate" = "Separations"
+    ),
+    values = c(
+      "hire_rate" = "#202d85",
+      "separation_rate" = "#de4500"
+    )
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  facet_wrap(
+    vars(age_group),
+    ncol = 3
+  )
+
+ggplot2::ggsave(
+  "workforce_movements_by_age_group.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
+  device = ragg::agg_png,
+  width = 12,
+  height = 8
+)
+
+## net rate
+movement_by_age_group |>
+  mutate(
+    net_rate = hire_rate - separation_rate
+  ) |>
+  mutate(
+    net_rate_sign = if_else(net_rate >= 0, "positive", "negative")
+  ) |>
+  ggplot() +
+  geom_col(
+    aes(
+      x = ref_date,
+      y = net_rate,
+      fill = net_rate_sign
+    )
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  theme(
+    legend.position = "none"
+  ) +
+  # different colors depending on whether net rate is positive or negative
+  scale_fill_manual(
+    values = c(
+      "positive" = "#202d85",
+      "negative" = "#de4500"
+    )
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  labs(
+    x = "Year",
+    y = "Net Movement Rate"
+  ) +
+  facet_wrap(
+    vars(age_group),
+    ncol = 3
+  )
+
+ggplot2::ggsave(
+  "workforce_net_movements_by_age_group.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
+  device = ragg::agg_png,
+  width = 12,
+  height = 8
+)
+
+## headcount decomposition
+movement_decomposition_by_age_group <- movement_by_age_group |>
+  # collected rows from duckdb carry no guaranteed order, and lag() needs one
+  arrange(ref_date) |>
+  mutate(
+    net_change = headcount - lag(headcount, order_by = ref_date),
+    # compute_movement() counts moves between age groups as neither hires nor
+    # separations, so net aging is recovered as the residual of the headcount
+    # identity. it also absorbs people whose age is missing on only one date
+    net_aging = net_change - (hires - separations),
+    .by = age_group
+  ) |>
+  filter(
+    !is.na(net_change)
+  )
+
+movement_decomposition_by_age_group |>
+  mutate(
+    separations = -separations
+  ) |>
+  tidyr::pivot_longer(
+    c(hires, separations, net_aging),
+    names_to = "component",
+    values_to = "value"
+  ) |>
+  ggplot(
+    aes(x = ref_date)
+  ) +
+  geom_col(
+    aes(
+      y = value,
+      fill = component
+    ),
+    position = "stack"
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  scale_fill_manual(
+    name = "Component",
+    labels = c(
+      "hires" = "Hires",
+      "separations" = "Separations",
+      "net_aging" = "Net aging between groups"
+    ),
+    values = c(
+      "hires" = "#202d85",
+      "separations" = "#de4500",
+      "net_aging" = "#f2a541"
+    )
+  ) +
+  scale_color_manual(
+    name = NULL,
+    labels = c("net_change" = "Net change in headcount"),
+    values = c("net_change" = "black")
+  ) +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  scale_y_continuous(
+    labels = scales::comma
+  ) +
+  labs(
+    x = "Year",
+    y = "Change in Headcount"
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  # age groups differ widely in size, so a shared scale would flatten the
+  # smaller ones
+  facet_wrap(
+    vars(age_group),
+    ncol = 2,
+    scales = "free_y"
+  )
+
+ggplot2::ggsave(
+  "movement_decomposition_by_age_group.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
+  device = ragg::agg_png,
+  width = 12,
+  height = 8
 )
 
 # transition
-## establishment
-transitions_est <- pry_contracts_judicial |>
+## occupation
+transitions_occupation <- pry_contracts_judicial |>
   compute_transition(
     id_col = "personnel_id",
-    group_cols = "est_id",
+    group_cols = "occupation_group",
     summarize = TRUE
-  )
-
-transitions_est <- transitions_est |>
-  left_join(
-    pry_est_name,
-    by = c("from" = "est_id")
-  ) |>
-  left_join(
-    pry_est_name,
-    by = c("to" = "est_id"),
-    suffix = c("_from", "_to")
-  ) |>
-  select(
-    from = est_name_native_from,
-    to = est_name_native_to,
-    transitions
-  ) |>
-  summarise(
-    weight = sum(transitions, na.rm = TRUE),
-    .by = c("from", "to")
   ) |>
   collect()
 
-transitions_est |>
-  plot_transition()
+transitions_occupation |>
+  plot_transition_network()
 
 ggplot2::ggsave(
-  "workforce_transitions_by_est.png",
-  path = here::here("analysis", "figs", "workforce"),
+  "workforce_transitions_by_occupation.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12
 )
 
-## ministry (adm2)
-transitions_ministry <- pry_contracts_judicial |>
+## age group
+transitions_age_group <- pry_contracts_judicial |>
+  left_join(
+    pry_personnel |> select(personnel_id, ref_date, age),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  filter(
+    !is.na(age)
+  ) |>
+  classify_age_group() |>
   compute_transition(
     id_col = "personnel_id",
-    group_cols = "adm2",
+    group_cols = "age_group",
     summarize = TRUE
-  ) |>
-  summarise(
-    weight = sum(transitions, na.rm = TRUE),
-    .by = c("from", "to")
   ) |>
   collect()
 
-transitions_ministry |>
-  plot_transition()
+transitions_age_group |>
+  mutate(
+    from_to = paste(from, to, sep = " -> ")
+  ) |>
+  ggplot(
+    aes(
+      ref_date,
+      transitions,
+      color = from_to
+    )
+  ) +
+  geom_line() +
+  geom_point() +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  scale_color_manual(
+    name = "Transition",
+    values = c(
+      "<30 -> 30-39" = "#202d85",
+      "30-39 -> 40-49" = "#de4500",
+      "40-49 -> 50-59" = "#f2a541",
+      "50-59 -> 60+" = "#6c757d"
+    )
+  ) +
+  facet_wrap(
+    vars(from_to),
+    ncol = 2
+  )
 
 ggplot2::ggsave(
-  "workforce_transitions_by_ministry.png",
-  path = here::here("analysis", "figs", "workforce"),
+  "workforce_transitions_by_age_group.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
-  height = 12
+  height = 8
 )
