@@ -2763,7 +2763,7 @@
       "RemoteUsername": "WB-PIDA-Data-Science-Shop",
       "RemoteRepo": "govhr",
       "RemoteRef": "transition",
-      "RemoteSha": "905cca3d717ef51e7294a7a5659efe1013e5730f"
+      "RemoteSha": "e8856d28976f2bce5b1cbb5eb2350868540df349"
     },
     "govhrapp": {
       "Package": "govhrapp",

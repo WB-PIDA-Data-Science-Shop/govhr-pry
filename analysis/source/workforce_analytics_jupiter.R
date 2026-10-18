@@ -2,6 +2,7 @@
 library(dplyr)
 library(duckplyr)
 library(ggplot2)
+library(ggalluvial)
 library(govhr)
 
 # download Lato from Google Fonts (if needed) and register it with systemfonts
@@ -712,7 +713,120 @@ ggplot2::ggsave(
   height = 12
 )
 
-## age group
+## alluvial
+transitions_occupation |>
+  summarise(
+    transitions = sum(transitions),
+    .by = c(from, to)
+  ) |>
+  ggplot(
+    aes(
+      axis1 = from,
+      axis2 = to,
+      y = transitions
+    )
+  ) +
+  ggalluvial::geom_alluvium(
+    aes(fill = from)
+  ) +
+  ggalluvial::geom_stratum() +
+  # stat = "stratum" only resolves when ggalluvial is attached, and the script
+  # namespaces it instead
+  geom_text(
+    stat = ggalluvial::StatStratum,
+    aes(label = after_stat(stratum))
+  ) +
+  scale_x_discrete(
+    limits = c("Original occupation", "Next occupation")
+  ) +
+  scale_y_continuous(
+    labels = scales::comma
+  ) +
+  scale_fill_manual(
+    name = "Original occupation",
+    values = c(
+      "juez de paz" = "#202d85",
+      "juez de primera instancia" = "#de4500",
+      "miembro de tribunal" = "#f2a541",
+      "otros" = "#6c757d"
+    )
+  ) +
+  labs(
+    y = "Transitions",
+    fill = "Original occupation"
+  )
+
+ggsave(
+  "transitions_by_occupation_alluvial.png"
+)
+
+## disaggregated by gender
+transitions_occupation_gender <- pry_contracts_judicial |>
+  detect_transition(
+    id_col = "personnel_id",
+    group_col = "occupation_group"
+  ) |>
+  inner_join(
+    pry_personnel |> select(personnel_id, ref_date, gender),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  collect()
+
+transitions_occupation_gender |>
+  summarise(
+    transitions = n(),
+    .by = c(from, to, gender)
+  ) |>
+  mutate(
+    transition_rate = transitions / sum(transitions, na.rm = TRUE),
+    .by = gender
+  ) |>
+  ggplot(
+    aes(
+      axis1 = from,
+      axis2 = to,
+      y = transition_rate
+    )
+  ) +
+  ggalluvial::geom_alluvium(
+    aes(fill = from)
+  ) +
+  ggalluvial::geom_stratum() +
+  geom_text(
+    stat = "stratum",
+    aes(label = after_stat(stringr::str_wrap(stratum, width = 15)))
+  ) +
+  scale_x_discrete(
+    limits = c("Original occupation", "Next occupation")
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  scale_fill_manual(
+    name = "Original occupation",
+    values = c(
+      "juez de paz" = "#202d85",
+      "juez de primera instancia" = "#de4500",
+      "miembro de tribunal" = "#f2a541",
+      "otros" = "#6c757d"
+    )
+  ) +
+  labs(
+    y = "Transitions"
+  ) +
+  theme(
+    legend.position = "none"
+  ) +
+  facet_wrap(
+    vars(gender),
+    ncol = 2
+  )
+
+ggsave(
+  "transitions_by_occupation_gender_alluvial.png"
+)
+
+# age group
 transitions_age_group <- pry_contracts_judicial |>
   left_join(
     pry_personnel |> select(personnel_id, ref_date, age),
@@ -724,8 +838,7 @@ transitions_age_group <- pry_contracts_judicial |>
   classify_age_group() |>
   compute_transition(
     id_col = "personnel_id",
-    group_cols = "age_group",
-    summarize = TRUE
+    group_col = "age_group"
   ) |>
   collect()
 
