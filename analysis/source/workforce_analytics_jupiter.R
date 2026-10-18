@@ -38,6 +38,10 @@ source(
   here::here("R", "occupation.R")
 )
 
+source(
+  here::here("R", "plot.R")
+)
+
 set.seed(2026)
 
 # read-in ----------------------------------------------------------------
@@ -203,46 +207,111 @@ headcount_by_age_group <- headcount_by_age |>
   )
 
 headcount_by_age_group |>
-  ggplot() +
-  geom_area(
-    aes(
-      x = ref_date,
-      y = share_headcount,
-      fill = age_group
-    ),
-    position = "stack"
-  ) +
-  scale_x_date(
-    date_breaks = "1 year",
-    date_labels = "%Y"
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 1)
-  ) +
-  labs(
-    x = "Year",
-    y = "Share of Headcount"
-  ) +
-  theme(
-    legend.position = "bottom",
-    legend.key.width = unit(1, "lines"),
-    legend.key.height = unit(1, "lines")
-  ) +
-  scale_fill_brewer(palette = "Reds") +
-  ggplot2::guides(
-    fill = ggplot2::guide_legend(
-      title = "Age Group",
-      title.position = "top",
-      ncol = 3,
-      override.aes = list(linewidth = 6)
-    )
+  plot_area(
+    x = ref_date,
+    y = share_headcount,
+    fill = age_group,
+    xlab = "Year",
+    ylab = "Share of Headcount"
   )
 
 ggsave(
   "headcount_by_age_group.png"
 )
 
-# movements
+# by gender
+headcount_by_gender <- pry_personnel |>
+  inner_join(
+    pry_contracts_judicial |>
+      distinct(personnel_id, ref_date),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  compute_headcount(
+    group_cols = c("gender")
+  ) |>
+  collect()
+
+headcount_by_gender |>
+  plot_area(
+    x = ref_date,
+    y = share_headcount,
+    fill = gender,
+    xlab = "Year",
+    ylab = "Share of Headcount"
+  ) +
+  scale_fill_manual(
+    name = "Gender",
+    labels = c(
+      "FEMENINO" = "Women",
+      "MASCULINO" = "Men"
+    ),
+    values = c(
+      "MASCULINO" = "#202d85",
+      "FEMENINO" = "#de4500"
+    )
+  )
+
+ggsave(
+  "headcount_by_gender.png"
+)
+
+# headcount by gender x occupation_group
+headcount_by_gender_occupation <- pry_personnel |>
+  inner_join(
+    pry_contracts_judicial |>
+      distinct(personnel_id, ref_date, occupation_group),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  compute_headcount(
+    group_cols = c("gender", "occupation_group")
+  ) |>
+  collect() |>
+  mutate(
+    share_headcount = headcount/sum(headcount, na.rm = TRUE),
+    .by = c(ref_date, occupation_group)
+  )
+
+headcount_by_gender_occupation |>
+  plot_area(
+    x = ref_date,
+    y = share_headcount,
+    fill = gender,
+    xlab = "Year",
+    ylab = "Share of Headcount"
+  ) +
+  scale_fill_manual(
+    name = "Gender",
+    labels = c(
+      "FEMENINO" = "Women",
+      "MASCULINO" = "Men"
+    ),
+    values = c(
+      "MASCULINO" = "#202d85",
+      "FEMENINO" = "#de4500"
+    )
+  ) +
+  geom_hline(
+    yintercept = 0.5,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  facet_wrap(
+    vars(occupation_group),
+    ncol = 2,
+    labeller = ggplot2::labeller(
+      occupation_group = \(x) stringr::str_wrap(x, width = 30)
+    )
+  )
+
+ggplot2::ggsave(
+  "headcount_by_gender_occupation_group.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
+  device = ragg::agg_png,
+  width = 12,
+  height = 8
+)
+
+# movements --------------------------------------------------------------
 ## overall
 movement <- pry_contracts_judicial |>
   mutate(
@@ -623,13 +692,12 @@ ggplot2::ggsave(
   height = 8
 )
 
-# transition
-## occupation
+# transition -------------------------------------------------------------
+# occupation
 transitions_occupation <- pry_contracts_judicial |>
   compute_transition(
     id_col = "personnel_id",
-    group_cols = "occupation_group",
-    summarize = TRUE
+    group_col = "occupation_group"
   ) |>
   collect()
 
