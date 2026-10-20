@@ -214,6 +214,16 @@ headcount_by_age_group |>
     fill = age_group,
     xlab = "Year",
     ylab = "Share of Headcount"
+  ) +
+  scale_fill_manual(
+    name = "Age Group",
+    values = c(
+      "<30" = "#202d85",
+      "30-39" = "#de4500",
+      "40-49" = "#f2a541",
+      "50-59" = "#47b679",
+      "60+" = "#8c8c8c"
+    )
   )
 
 ggsave(
@@ -363,7 +373,7 @@ movement |>
   )
 
 ggsave(
-  "workforce_movements.png"
+  "movements.png"
 )
 
 ## by occupation
@@ -426,7 +436,7 @@ movement_by_occupation |>
   )
 
 ggplot2::ggsave(
-  "workforce_movements_by_occupation_group.png",
+  "movements_by_occupation_group.png",
   path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
@@ -479,7 +489,7 @@ movement_by_occupation |>
   )
 
 ggplot2::ggsave(
-  "workforce_net_movements_by_occupation_group.png",
+  "net_movements_by_occupation_group.png",
   path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
@@ -547,7 +557,7 @@ movement_by_age_group |>
   )
 
 ggplot2::ggsave(
-  "workforce_movements_by_age_group.png",
+  "movements_by_age_group.png",
   path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
@@ -598,7 +608,7 @@ movement_by_age_group |>
   )
 
 ggplot2::ggsave(
-  "workforce_net_movements_by_age_group.png",
+  "net_movements_by_age_group.png",
   path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
@@ -706,7 +716,7 @@ transitions_occupation |>
   plot_transition_network()
 
 ggplot2::ggsave(
-  "workforce_transitions_by_occupation.png",
+  "transitions_by_occupation.png",
   path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
@@ -791,10 +801,16 @@ transitions_occupation_gender |>
   ggalluvial::geom_alluvium(
     aes(fill = from)
   ) +
-  ggalluvial::geom_stratum() +
+  ggalluvial::geom_stratum(
+    width = 1/2
+  ) +
   geom_text(
-    stat = "stratum",
-    aes(label = after_stat(stringr::str_wrap(stratum, width = 15)))
+    aes(
+      label = after_stat(
+        stringr::str_wrap(stratum, width = 20)
+      )
+    ),
+    stat = "stratum"
   ) +
   scale_x_discrete(
     limits = c("Original occupation", "Next occupation")
@@ -819,11 +835,15 @@ transitions_occupation_gender |>
   ) +
   facet_wrap(
     vars(gender),
-    ncol = 2
+    ncol = 1
   )
 
-ggsave(
-  "transitions_by_occupation_gender_alluvial.png"
+ggplot2::ggsave(
+  "transitions_by_occupation_gender_alluvial.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
+  device = ragg::agg_png,
+  width = 12,
+  height = 10
 )
 
 # age group
@@ -874,7 +894,7 @@ transitions_age_group |>
   )
 
 ggplot2::ggsave(
-  "workforce_transitions_by_age_group.png",
+  "transitions_by_age_group.png",
   path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,
