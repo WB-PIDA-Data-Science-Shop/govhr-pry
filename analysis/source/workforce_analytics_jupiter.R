@@ -650,7 +650,7 @@ movement_decomposition_by_age_group |>
     labels = c(
       "hires" = "Hires",
       "separations" = "Separations",
-      "net_aging" = "Net aging between groups"
+      "net_aging" = "Transition between groups"
     ),
     values = c(
       "hires" = "#202d85",
