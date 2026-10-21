@@ -703,6 +703,74 @@ ggplot2::ggsave(
   height = 8
 )
 
+## by gender
+# movement by gender
+movement_by_gender <- pry_contracts_judicial |>
+  inner_join(
+    pry_personnel |>
+      select(personnel_id, gender),
+    by = c("personnel_id")
+  ) |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_movement(
+    group_cols = c("gender")
+  ) |>
+  collect()
+
+movement_by_gender |>
+  tidyr::pivot_longer(
+    c(hire_rate, separation_rate),
+    names_to = "movement_type",
+    values_to = "value"
+  ) |>
+  mutate(
+    value = if_else(
+      movement_type == "hire_rate",
+      value,
+      -value
+    )
+  ) |>
+  plot_trend(
+    group_col = c("movement_type"),
+    y_col = "value",
+    y_label = "Movement Rate"
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  scale_color_manual(
+    name = "Type of Movement",
+    labels = c(
+      "hire_rate" = "Hires",
+      "separation_rate" = "Separations"
+    ),
+    values = c(
+      "hire_rate" = "#202d85",
+      "separation_rate" = "#de4500"
+    )
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  facet_wrap(
+    vars(gender)
+  )
+
+ggplot2::ggsave(
+  "movement_by_gender.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
+  device = ragg::agg_png,
+  width = 12,
+  height = 9
+)
+
 # transition -------------------------------------------------------------
 # occupation
 transitions_occupation <- pry_contracts_judicial |>
