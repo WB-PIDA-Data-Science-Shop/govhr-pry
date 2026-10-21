@@ -356,3 +356,27 @@ classify_age_group <- function(data) {
       )
     )
 }
+
+rename_establishment <- function(headcount_data, est_data){
+   data |>
+      left_join(
+      # only use original establishment name
+      est_data |>
+        distinct(est_id, .keep_all = TRUE) |>
+        select(est_id, est_name_native),
+      by = c("est_id")
+    ) |>
+     mutate(
+    est_name_native = forcats::fct_lump(
+      est_name_native,
+      n = 6,
+      w = headcount,
+      other_level = "Other"
+    ) |>
+      forcats::fct_reorder(
+        headcount,
+        .fun = sum,
+        .desc = TRUE
+      )
+  )
+}

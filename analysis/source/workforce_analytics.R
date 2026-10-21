@@ -82,8 +82,8 @@ pry_contracts_executive <- pry_contracts |>
   )
 
 pry_est_name <- pry_est_executive |>
-      distinct(est_id, .keep_all = TRUE) |>
-      select(est_id, est_name_native) 
+  distinct(est_id, .keep_all = TRUE) |>
+  select(est_id, est_name_native)
 
 # workforce analytics ----------------------------------------------------
 # headcount
@@ -139,7 +139,8 @@ headcount_by_est <- pry_contracts_executive |>
   ) |>
   collect() |>
   arrange(
-    est_id, ref_date
+    est_id,
+    ref_date
   )
 
 headcount_by_est |>
@@ -167,19 +168,21 @@ headcount_by_est |>
       \(x) stringr::str_wrap(x, width = 30)
     )
   ) |>
-  plot_trend(
-    group_col = "est_name_native",
-    y_col = "headcount",
-    y_label = "Headcount"
+  ggplot() +
+  geom_area(
+    aes(
+      x = ref_date,
+      y = headcount,
+      fill = est_name_native
+    ),
+    position = "stack"
   ) +
   theme(
-    legend.position = "bottom",
-    legend.key.width = unit(1, "lines"),
-    legend.key.height = unit(1, "lines")
+    legend.position = "bottom"
   ) +
-  ggthemes::scale_color_solarized() +
+  ggthemes::scale_fill_solarized() +
   ggplot2::guides(
-    color = ggplot2::guide_legend(
+    fill = ggplot2::guide_legend(
       title = "Establishment",
       title.position = "top",
       ncol = 3,
@@ -207,12 +210,12 @@ headcount_by_contract_type |>
     group_col = "contract_type",
     y_col = "headcount",
     y_label = "Headcount"
-  ) 
+  )
 
 # by age
 headcount_by_age <- pry_personnel |>
   inner_join(
-    pry_contracts_executive |>
+    pry_contracts_judicial |>
       distinct(personnel_id, ref_date),
     by = c("personnel_id", "ref_date")
   ) |>
@@ -227,9 +230,9 @@ headcount_by_age_group <- headcount_by_age |>
     !is.na(age)
   ) |>
   mutate(
-    age = as.numeric(age),
-    age_group = cut_age(age)
+    age = as.numeric(age)
   ) |>
+  classify_age_group() |>
   summarise(
     headcount = sum(headcount),
     .by = c(ref_date, age_group)
@@ -240,44 +243,28 @@ headcount_by_age_group <- headcount_by_age |>
   )
 
 headcount_by_age_group |>
-  ggplot() +
-  geom_area(
-    aes(
-      x = ref_date,
-      y = share_headcount,
-      fill = age_group
-    ),
-    position = "stack"
+  plot_area(
+    x = ref_date,
+    y = share_headcount,
+    fill = age_group,
+    xlab = "Year",
+    ylab = "Share of Headcount"
   ) +
-  scale_x_date(
-    date_breaks = "1 year",
-    date_labels = "%Y"
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 1)
-  ) +
-  labs(
-    x = "Year",
-    y = "Share of Headcount"
-  ) +
-  theme(
-    legend.position = "bottom",
-    legend.key.width = unit(1, "lines"),
-    legend.key.height = unit(1, "lines")
-  ) +
-  scale_fill_brewer(palette = "Reds") +
-  ggplot2::guides(
-      fill = ggplot2::guide_legend(
-      title = "Age Group",
-      title.position = "top",
-      ncol = 3,
-      override.aes = list(linewidth = 6)
+  scale_fill_manual(
+    name = "Age Group",
+    values = c(
+      "<30" = "#202d85",
+      "30-39" = "#de4500",
+      "40-49" = "#f2a541",
+      "50-59" = "#47b679",
+      "60+" = "#8c8c8c"
     )
   )
 
 ggsave(
   "headcount_by_age_group.png"
 )
+
 
 # movements
 ## overall
@@ -338,40 +325,47 @@ ggsave(
   "workforce_movements.png"
 )
 
-## by establishment
+## by establishment: only retain ministry of health and education
 movement_by_est <- pry_contracts_executive |>
   mutate(
     employment_status = "active"
   ) |>
+  filter(
+    est_id == "12-8-1" |
+    est_id == "12-7-1"
+  ) |>
   compute_movement(
     group_cols = c("est_id")
   ) |>
-  mutate(
-    replacement_rate = hires / separations
-  ) |>
   collect()
 
-# to aid visualization, sample the 9 largest establishments
-sampled_est_ids <- headcount_by_est |>
-  summarise(
-    headcount = sum(headcount),
-    .by = c(est_id)
-  ) |>
-  slice_max(
-    order_by = headcount,
-    n = 4
-  ) |>
-  pull(est_id)
+# join with establishment names
+movement_by_est <- movement_by_est |>
+  left_join(
+    pry_est |> 
+      distinct(est_id, .keep_all = TRUE) |> 
+      select(est_id, est_name_native) |>
+      collect(),
+    by = c("est_id")
+  )
+
+# only retain ministry of health and education
+movement_by_est <- movement_by_est |>
+  inner_join(
+    headcount_by_est |>
+      summarise(
+        headcount = sum(headcount),
+        .by = c(est_id)
+      ) |>
+      slice_max(
+        order_by = headcount,
+        n = 6
+      ) |>
+      select(est_id),
+    by = c("est_id")
+  )
 
 movement_by_est |>
-  filter(
-    est_id %in% sampled_est_ids
-  ) |>
-  # join establishment names for better visualization
-  left_join(
-    pry_est_name |> collect(),
-    by = c("est_id")
-  ) |>
   tidyr::pivot_longer(
     c(hire_rate, separation_rate),
     names_to = "movement_type",
@@ -414,7 +408,6 @@ movement_by_est |>
   facet_wrap(
     vars(est_name_native),
     ncol = 2,
-    scales = "free_y",
     labeller = ggplot2::labeller(
       est_name_native = \(x) stringr::str_wrap(x, width = 30)
     )
@@ -422,7 +415,7 @@ movement_by_est |>
 
 ggplot2::ggsave(
   "workforce_movements_by_est.png",
-  path = here::here("analysis", "figs", "workforce"),
+  path = here::here("analysis", "figs", "executive", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12
@@ -430,13 +423,6 @@ ggplot2::ggsave(
 
 ## net rate
 movement_by_est |>
-  filter(
-    est_id %in% sampled_est_ids
-  ) |>
-  left_join(
-    pry_est_name |> collect(),
-    by = c("est_id")
-  ) |>
   mutate(
     net_rate = hire_rate - separation_rate
   ) |>
@@ -453,16 +439,11 @@ movement_by_est |>
   theme(
     legend.position = "none"
   ) +
-  # set same color for all lines
-  scale_color_manual(
-    values = rep("#d99e73", length(sampled_est_ids))
-  ) +
   scale_y_continuous(
     labels = scales::percent_format(accuracy = 0.1)
   ) +
   facet_wrap(
     vars(est_name_native),
-    scales = "free_y",
     labeller = ggplot2::labeller(
       est_name_native = \(x) stringr::str_wrap(x, width = 30)
     )
@@ -470,7 +451,7 @@ movement_by_est |>
 
 ggplot2::ggsave(
   "workforce_net_movements_by_est.png",
-  path = here::here("analysis", "figs", "workforce"),
+  path = here::here("analysis", "figs", "executive", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 12
@@ -484,7 +465,7 @@ transitions_est <- pry_contracts_executive |>
     group_cols = "est_id",
     summarize = TRUE
   )
-  
+
 transitions_est <- transitions_est |>
   left_join(
     pry_est_name,
