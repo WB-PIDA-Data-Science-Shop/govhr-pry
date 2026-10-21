@@ -85,6 +85,8 @@ pry_est_name <- pry_est_executive |>
   distinct(est_id, .keep_all = TRUE) |>
   select(est_id, est_name_native)
 
+pry_budget <- tbl(con, "pry_budget")
+
 # workforce analytics ----------------------------------------------------
 # headcount
 headcount <- pry_contracts_executive |>
@@ -177,6 +179,10 @@ headcount_by_est |>
     ),
     position = "stack"
   ) +
+  labs(
+    x = "Year",
+    y = "Headcount"
+  ) +
   theme(
     legend.position = "bottom"
   ) +
@@ -192,7 +198,7 @@ headcount_by_est |>
 
 ggplot2::ggsave(
   "headcount_by_est.png",
-  path = here::here("analysis", "figs"),
+  path = here::here("analysis", "figs", "executive", "workforce"),
   device = ragg::agg_png,
   width = 12,
   height = 9
@@ -587,4 +593,96 @@ ggplot2::ggsave(
   device = ragg::agg_png,
   width = 12,
   height = 12
+)
+
+# absorption capacity ----------------------------------------------------
+budget_by_est <- pry_budget |>
+  summarise(
+    budget = sum(budget_lcu, na.rm = TRUE),
+    .by = c(est_id, ref_date)
+  ) |>
+  collect()
+
+budget_est <- pry_budget |>
+  distinct(est_id, .keep_all = TRUE) |>
+  select(est_id, est_name_native) |>
+  collect()
+
+headcount_by_est <- pry_contracts_executive |>
+  compute_headcount(
+    group_cols = c("est_id")
+  ) |>
+  left_join(
+    pry_est |>
+      select(ref_date, est_id, adm2),
+    by = c("est_id", "ref_date")
+  ) |>
+  collect() |>
+  mutate(
+        # extract two first numbers separated by hyphen
+        est_id = stringr::str_extract(est_id, "^\\d+-\\d+")
+      ) |>
+  summarise(
+    headcount = sum(headcount, na.rm = TRUE),
+    .by = c(est_id, ref_date)
+  )
+
+absorption_capacity_by_est <- headcount_by_est |>
+  inner_join(
+    budget_by_est,
+    by = c("est_id", "ref_date")
+  ) |>
+  left_join(
+    budget_est,
+    by = c("est_id")
+  ) |>
+  mutate(
+    absorption_capacity = budget / headcount
+  )
+
+largest_absorption_capacity_est <- absorption_capacity_by_est |>
+  summarise(
+    avg_absorption_capacity = mean(absorption_capacity, na.rm = TRUE),
+    .by = c(est_id)
+  ) |>
+  slice_max(
+    order_by = avg_absorption_capacity,
+    n = 6
+  ) |>
+  select(est_id)
+
+absorption_capacity_by_est |>
+  inner_join(largest_absorption_capacity_est, by = "est_id") |>
+  ggplot(
+    aes(
+      x = ref_date,
+      y = absorption_capacity,
+      group = est_id
+    )
+  ) +
+  geom_col() +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  scale_y_continuous(
+    labels = scales::dollar_format(prefix = "₲", big.mark = ".", decimal.mark = ",")
+  ) +
+  coord_cartesian(
+    ylim = c(0, NA)
+  ) +
+  facet_wrap(
+    vars(est_name_native),
+    ncol = 3,
+    labeller = ggplot2::labeller(
+      est_name_native = \(x) stringr::str_wrap(x, width = 30)
+    )
+  ) +
+  labs(
+    x = "Year",
+    y = "Absorption Capacity (Budget per Headcount)"
+  )
+
+ggsave(
+  "absorption_capacity_by_est.png"
 )
