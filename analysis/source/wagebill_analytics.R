@@ -207,6 +207,7 @@ wagebill_est <- pry_contracts_executive |>
     employment_status = "active"
   ) |>
   compute_wagebill(
+    measure_col = "base_salary_lcu",
     group_cols = c("est_id")
   ) |>
   left_join(
@@ -236,21 +237,33 @@ wagebill_est |>
     wagebill = sum(wagebill),
     .by = c(ref_date, est_name_native)
   ) |>
-  plot_trend(
-    group_col = "est_name_native",
-    y_col = "wagebill",
-    y_label = "Wagebill (real ₲, Dec 2021)"
-  ) +
+  plot_area(
+    x = ref_date,
+    y = wagebill,
+    fill = est_name_native,
+    xlab = "Year",
+    ylab = "Wagebill (real ₲, Dec 2021)"
+  )  +
   theme(
     legend.position = "bottom"
   ) +
-  ggthemes::scale_color_solarized() +
+  ggthemes::scale_fill_solarized() +
+  scale_y_continuous(
+    labels = scales::label_number(
+      scale_cut = scales::cut_short_scale()
+    )
+  ) +
+  # make legend entries string wrap
   ggplot2::guides(
-    color = ggplot2::guide_legend(
+    fill = ggplot2::guide_legend(
       title = "Establishment",
       title.position = "top",
       ncol = 2,
-      override.aes = list(linewidth = 6)
+      override.aes = list(linewidth = 4),
+      label.theme = ggplot2::element_text(
+        size = 10,
+        lineheight = 0.8
+      )
     )
   )
 
@@ -572,6 +585,94 @@ pry_wage_by_gender |>
 
 ggsave(
   "wage_by_gender.png"
+)
+
+# wage by establishment
+wage_by_est <- pry_contracts_executive |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_wage(
+    measure_col = "base_salary_lcu",
+    group_cols = c("est_id")
+  ) |>
+  left_join(
+    pry_est_name,
+    by = c("est_id")
+  ) |>
+  collect()
+
+# plot evolution of wage by establishment
+wage_by_est |>
+  filter(
+    !is.na(wage) &
+      (
+        est_id == "12-8-1" |
+        est_id == "12-7-1"
+      )
+  ) |>
+  mutate(
+    est_name_native = forcats::fct_lump(
+      est_name_native,
+      n = 6,
+      w = wage,
+      other_level = "Other"
+    ) |>
+      forcats::fct_reorder(
+        wage,
+        .fun = sum,
+        .desc = TRUE
+      )
+  ) |>
+  filter(
+    est_name_native != "Other"
+  ) |>
+  plot_trend(
+    group_col = c("est_name_native"),
+    y_col = "wage",
+    y_label = "Average wage (real ₲, Dec 2021)"
+  ) +
+  scale_color_manual(
+    name = "Establishment",
+    values = c(
+      "#202d85",
+      "#de4500",
+      "#f5a623",
+      "#2ca02c",
+      "#d62728",
+      "#9467bd",
+      "#8c564b"
+    )
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  # two columns for legend
+  guides(
+    color = guide_legend(
+      title.position = "top",
+      ncol = 2,
+      override.aes = list(linewidth = 4),
+      label.theme = element_text(
+        size = 10,
+        lineheight = 0.8
+      )
+    )
+  ) +
+  # str_wrap title of facets
+  theme(
+    strip.text = element_text(
+      size = 10,
+      face = "bold"
+    ),
+    legend.position = "none"
+  ) +
+  facet_wrap(
+    vars(est_name_native)
+  )
+
+ggsave(
+  "wage_by_est.png"
 )
 
 # wage distribution

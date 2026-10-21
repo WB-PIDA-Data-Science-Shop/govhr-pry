@@ -13,9 +13,6 @@ plot_area <- function(data, x, y, fill = NULL, xlab = NULL, ylab = NULL) {
       date_breaks = "1 year",
       date_labels = "%Y"
     ) +
-    scale_y_continuous(
-      labels = scales::percent_format(accuracy = 1)
-    ) +
     labs(
       x = xlab,
       y = ylab
