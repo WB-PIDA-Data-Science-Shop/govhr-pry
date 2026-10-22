@@ -250,11 +250,6 @@ plot_movement_joint <- function(movement_data, group_cols = NULL) {
       )
     ) +
     ggplot2::geom_line() +
-    ggplot2::geom_hline(
-      yintercept = 0,
-      linetype = "dashed",
-      color = "gray"
-    ) +
     ggplot2::scale_color_manual(
       name = "Type of Movement",
       labels = c(

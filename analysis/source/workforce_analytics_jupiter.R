@@ -83,10 +83,7 @@ pry_contracts_judicial <- pry_contracts |>
   filter(
     ref_date >= as.Date("2016-01-01"),
     ref_date <= as.Date("2025-12-01")
-  )
-
-# simplify occupation groups
-pry_contracts_judicial <- pry_contracts_judicial |>
+  ) |>
   classify_occupation_group()
 
 pry_est_name <- pry_est_judicial |>
@@ -129,39 +126,46 @@ ggsave(
 
 # composition
 #  by occupation
-headcount_by_occupation <- pry_contracts_judicial |>
+headcount_by_occupation_group <- pry_contracts_judicial |>
   compute_headcount(
-    group_cols = c("occupation")
+    group_cols = c("occupation_group")
   ) |>
   collect()
 
-# simplify occupation
-headcount_by_occupation_simplified <- headcount_by_occupation |>
-  mutate(
-    occupation = forcats::fct_lump_n(
-      occupation,
-      w = headcount,
-      n = 10
-    )
-  ) |>
-  summarise(
-    headcount = sum(headcount),
-    share_headcount = sum(share_headcount),
-    .by = c(occupation, ref_date)
-  )
-
-headcount_by_occupation_simplified |>
+headcount_by_occupation_group |>
   filter(
-    occupation != "Other"
+    occupation_group != "Otros"
   ) |>
   ggplot() +
   geom_line(
-    aes(ref_date, headcount)
+    aes(ref_date, headcount, color = occupation_group)
   ) +
-  facet_wrap(
-    vars(occupation),
-    nrow = 3
+  labs(
+    x = "Year",
+    y = "Headcount"
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  scale_color_manual(
+    name = "Occupation Group",
+    values = c(
+      "Miembro de Tribunal" = "#202d85",
+      "Juez de Primera Instancia" = "#de4500",
+      "Juez de Paz" = "#f2a541"
+    )
+  ) +
+  guides(
+    color = guide_legend(
+      title = "Occupation Group",
+      nrow = 2,
+      byrow = TRUE
+    )
   )
+
+ggsave(
+  "headcount_by_occupation_group.png"
+)
 
 # by contract type
 headcount_by_contract_type <- pry_contracts_judicial |>
@@ -338,6 +342,7 @@ ggsave(
   "movements.png"
 )
 
+## net rate
 movement |>
   plot_movement_net()
 
@@ -425,15 +430,11 @@ ggplot2::ggsave(
   height = 8
 )
 
-## headcount decomposition
+## movement decomposition
 movement_decomposition_by_age_group <- movement_by_age_group |>
-  # collected rows from duckdb carry no guaranteed order, and lag() needs one
   arrange(ref_date) |>
   mutate(
     net_change = headcount - lag(headcount, order_by = ref_date),
-    # compute_movement() counts moves between age groups as neither hires nor
-    # separations, so net aging is recovered as the residual of the headcount
-    # identity. it also absorbs people whose age is missing on only one date
     net_aging = net_change - (hires - separations),
     .by = age_group
   ) |>
@@ -458,6 +459,8 @@ movement_decomposition_by_age_group |>
       y = value,
       fill = component
     ),
+    color = "white",
+    linewidth = 0.1,
     position = "stack"
   ) +
   geom_hline(
@@ -470,7 +473,7 @@ movement_decomposition_by_age_group |>
     labels = c(
       "hires" = "Hires",
       "separations" = "Separations",
-      "net_aging" = "Transition between groups"
+      "net_aging" = "Transitions through aging"
     ),
     values = c(
       "hires" = "#202d85",
@@ -497,12 +500,9 @@ movement_decomposition_by_age_group |>
   theme(
     legend.position = "bottom"
   ) +
-  # age groups differ widely in size, so a shared scale would flatten the
-  # smaller ones
   facet_wrap(
     vars(age_group),
-    ncol = 2,
-    scales = "free_y"
+    ncol = 2
   )
 
 ggplot2::ggsave(
@@ -562,6 +562,95 @@ ggplot2::ggsave(
   device = ragg::agg_png,
   width = 12,
   height = 12
+)
+
+## count transitions in and out of each group
+transitions_in <- transitions_occupation_group |>
+  # simplify ref_date by quarter to reduce number of x-axis ticks
+  mutate(
+    ref_date = lubridate::floor_date(ref_date, unit = "quarter")
+  ) |>
+  summarise(
+    transitions = sum(transitions),
+    .by = c(from, ref_date)
+  ) |>
+  rename(
+    occupation_group = from
+  )
+  
+transitions_out <- transitions_occupation_group |>
+  mutate(
+    ref_date = lubridate::floor_date(ref_date, unit = "quarter")
+  ) |>
+  summarise(
+    transitions = -sum(transitions),
+    .by = c(to, ref_date)
+  ) |>
+  rename(
+    occupation_group = to
+  )
+
+transitions_in_and_out <- transitions_in |>
+  inner_join(
+    transitions_out,
+    by = c("occupation_group", "ref_date"),
+    suffix = c("_in", "_out")
+  )
+
+transitions_in_and_out |>
+  ggplot(
+    aes(
+      x = ref_date
+    )
+  ) +
+  geom_col(
+    aes(
+      y = transitions_in,
+      fill = "Transitions In"
+    )
+  ) +
+  geom_col(
+    aes(
+      y = transitions_out,
+      fill = "Transitions Out"
+    )
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  scale_fill_manual(
+    name = NULL,
+    values = c(
+      "Transitions In" = "#202d85",
+      "Transitions Out" = "#de4500"
+    )
+  ) +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  scale_y_continuous(
+    labels = scales::comma
+  ) +
+  labs(
+    x = "Year",
+    y = "Transitions"
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  facet_wrap(
+    vars(occupation_group),
+    ncol = 2,
+    labeller = ggplot2::labeller(
+      occupation_group = \(x) stringr::str_wrap(x, width = 30)
+    )
+  )
+
+ggsave(
+  "transitions_in_and_out_by_occupation_group.png"
 )
 
 ## alluvial
