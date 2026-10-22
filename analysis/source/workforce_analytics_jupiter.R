@@ -332,48 +332,17 @@ movement <- pry_contracts_judicial |>
   collect()
 
 movement |>
-  tidyr::pivot_longer(
-    c(hire_rate, separation_rate),
-    names_to = "movement_type",
-    values_to = "value"
-  ) |>
-  mutate(
-    value = if_else(
-      movement_type == "hire_rate",
-      value,
-      -value
-    )
-  ) |>
-  plot_trend(
-    group_col = c("movement_type"),
-    y_col = "value",
-    y_label = "Movement Rate"
-  ) +
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    color = "gray"
-  ) +
-  scale_color_manual(
-    name = "Type of Movement",
-    labels = c(
-      "hire_rate" = "Hires",
-      "separation_rate" = "Separations"
-    ),
-    values = c(
-      "hire_rate" = "#202d85",
-      "separation_rate" = "#de4500"
-    )
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 0.1)
-  ) +
-  theme(
-    legend.position = "bottom"
-  )
+  plot_movement_joint()
 
 ggsave(
   "movements.png"
+)
+
+movement |>
+  plot_movement_net()
+
+ggsave(
+  "movements_net.png"
 )
 
 ## by occupation
@@ -388,52 +357,9 @@ movement_by_occupation <- pry_contracts_judicial |>
   collect()
 
 movement_by_occupation |>
-  tidyr::pivot_longer(
-    c(hire_rate, separation_rate),
-    names_to = "movement_type",
-    values_to = "value"
-  ) |>
-  mutate(
-    value = if_else(
-      movement_type == "hire_rate",
-      value,
-      -value
-    )
-  ) |>
-  plot_trend(
-    group_col = c("movement_type"),
-    y_col = "value",
-    y_label = "Movement Rate"
-  ) +
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    color = "gray"
-  ) +
-  scale_color_manual(
-    name = "Type of Movement",
-    labels = c(
-      "hire_rate" = "Hires",
-      "separation_rate" = "Separations"
-    ),
-    values = c(
-      "hire_rate" = "#202d85",
-      "separation_rate" = "#de4500"
-    )
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 0.1)
-  ) +
-  theme(
-    legend.position = "bottom"
-  ) +
-  facet_wrap(
-    vars(occupation_group),
-    ncol = 2,
-    labeller = ggplot2::labeller(
-      occupation_group = \(x) stringr::str_wrap(x, width = 30)
-    )
-  )
+  plot_movement_joint(
+    group_cols = c("occupation_group")
+  ) 
 
 ggplot2::ggsave(
   "movements_by_occupation_group.png",
@@ -445,47 +371,8 @@ ggplot2::ggsave(
 
 ## net rate
 movement_by_occupation |>
-  mutate(
-    net_rate = hire_rate - separation_rate
-  ) |>
-  mutate(
-    net_rate_sign = if_else(net_rate >= 0, "positive", "negative")
-  ) |>
-  ggplot() +
-  geom_col(
-    aes(
-      x = ref_date,
-      y = net_rate,
-      fill = net_rate_sign
-    )
-  ) +
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    color = "gray"
-  ) +
-  theme(
-    legend.position = "none"
-  ) +
-  # different colors depending on whether net rate is positive or negative
-  scale_fill_manual(
-    values = c(
-      "positive" = "#202d85",
-      "negative" = "#de4500"
-    )
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 0.1)
-  ) +
-  labs(
-    x = "Year",
-    y = "Net Movement Rate"
-  ) +
-  facet_wrap(
-    vars(occupation_group),
-    labeller = ggplot2::labeller(
-      occupation_group = \(x) stringr::str_wrap(x, width = 30)
-    )
+  plot_movement_net(
+    group_cols = c("occupation_group")
   )
 
 ggplot2::ggsave(
@@ -512,48 +399,8 @@ movement_by_age_group <- pry_contracts_judicial |>
   collect()
 
 movement_by_age_group |>
-  tidyr::pivot_longer(
-    c(hire_rate, separation_rate),
-    names_to = "movement_type",
-    values_to = "value"
-  ) |>
-  mutate(
-    value = if_else(
-      movement_type == "hire_rate",
-      value,
-      -value
-    )
-  ) |>
-  plot_trend(
-    group_col = c("movement_type"),
-    y_col = "value",
-    y_label = "Movement Rate"
-  ) +
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    color = "gray"
-  ) +
-  scale_color_manual(
-    name = "Type of Movement",
-    labels = c(
-      "hire_rate" = "Hires",
-      "separation_rate" = "Separations"
-    ),
-    values = c(
-      "hire_rate" = "#202d85",
-      "separation_rate" = "#de4500"
-    )
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 0.1)
-  ) +
-  theme(
-    legend.position = "bottom"
-  ) +
-  facet_wrap(
-    vars(age_group),
-    ncol = 3
+  plot_movement_joint(
+    group_cols = c("age_group")
   )
 
 ggplot2::ggsave(
@@ -566,45 +413,8 @@ ggplot2::ggsave(
 
 ## net rate
 movement_by_age_group |>
-  mutate(
-    net_rate = hire_rate - separation_rate
-  ) |>
-  mutate(
-    net_rate_sign = if_else(net_rate >= 0, "positive", "negative")
-  ) |>
-  ggplot() +
-  geom_col(
-    aes(
-      x = ref_date,
-      y = net_rate,
-      fill = net_rate_sign
-    )
-  ) +
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    color = "gray"
-  ) +
-  theme(
-    legend.position = "none"
-  ) +
-  # different colors depending on whether net rate is positive or negative
-  scale_fill_manual(
-    values = c(
-      "positive" = "#202d85",
-      "negative" = "#de4500"
-    )
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 0.1)
-  ) +
-  labs(
-    x = "Year",
-    y = "Net Movement Rate"
-  ) +
-  facet_wrap(
-    vars(age_group),
-    ncol = 3
+  plot_movement_net(
+    group_cols = c("age_group")
   )
 
 ggplot2::ggsave(
@@ -720,47 +530,8 @@ movement_by_gender <- pry_contracts_judicial |>
   collect()
 
 movement_by_gender |>
-  tidyr::pivot_longer(
-    c(hire_rate, separation_rate),
-    names_to = "movement_type",
-    values_to = "value"
-  ) |>
-  mutate(
-    value = if_else(
-      movement_type == "hire_rate",
-      value,
-      -value
-    )
-  ) |>
-  plot_trend(
-    group_col = c("movement_type"),
-    y_col = "value",
-    y_label = "Movement Rate"
-  ) +
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    color = "gray"
-  ) +
-  scale_color_manual(
-    name = "Type of Movement",
-    labels = c(
-      "hire_rate" = "Hires",
-      "separation_rate" = "Separations"
-    ),
-    values = c(
-      "hire_rate" = "#202d85",
-      "separation_rate" = "#de4500"
-    )
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 0.1)
-  ) +
-  theme(
-    legend.position = "bottom"
-  ) +
-  facet_wrap(
-    vars(gender)
+  plot_movement_joint(
+    group_cols = c("gender")
   )
 
 ggplot2::ggsave(
@@ -773,18 +544,20 @@ ggplot2::ggsave(
 
 # transition -------------------------------------------------------------
 # occupation
-transitions_occupation <- pry_contracts_judicial |>
+transitions_occupation_group <- pry_contracts_judicial |>
   compute_transition(
     id_col = "personnel_id",
     group_col = "occupation_group"
   ) |>
   collect()
 
-transitions_occupation |>
-  plot_transition_network()
+transitions_occupation_group |>
+  plot_transition(
+    weight_col = "transitions"
+  )
 
 ggplot2::ggsave(
-  "transitions_by_occupation.png",
+  "transitions_by_occupation_group.png",
   path = here::here("analysis", "figs", "jupiter", "workforce"),
   device = ragg::agg_png,
   width = 12,

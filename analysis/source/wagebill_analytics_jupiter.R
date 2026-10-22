@@ -86,6 +86,10 @@ pry_contracts_judicial <- pry_contracts |>
     country_code = "PRY"
   )
 
+# simplify occupation groups
+pry_contracts_judicial <- pry_contracts_judicial |>
+  classify_occupation_group()
+
 pry_est_name <- pry_est_judicial |>
   distinct(
     est_id, 
@@ -103,13 +107,7 @@ wagebill <- pry_contracts_judicial |>
   compute_wagebill(
     measure_col = "gross_salary_lcu"
   ) |>
-  collect() |>
-  arrange(
-    ref_date
-  ) |>
-  mutate(
-    wagebill_growth = wagebill / lag(wagebill) - 1
-  )
+  collect()
 
 wagebill |>
   plot_trend(
@@ -202,43 +200,23 @@ ggsave(
   "wagebill_by_salary_component.png"
 )
 
-# by establishment
-wagebill_est <- pry_contracts_judicial |>
+# by occupation group
+wagebill_by_occupation_group <- pry_contracts_judicial |>
   mutate(
     employment_status = "active"
   ) |>
   compute_wagebill(
-    group_cols = c("est_id")
-  ) |>
-  left_join(
-    pry_est_name,
-    by = c("est_id")
+    group_cols = c("occupation_group")
   ) |>
   collect()
 
-wagebill_est |>
+wagebill_by_occupation_group |>
   filter(
-    !is.na(wagebill)
-  ) |>
-  mutate(
-    est_name_native = forcats::fct_lump(
-      est_name_native,
-      n = 6,
-      w = wagebill,
-      other_level = "Other"
-    ) |>
-      forcats::fct_reorder(
-        wagebill,
-        .fun = sum,
-        .desc = TRUE
-      )
-  ) |>
-  summarise(
-    wagebill = sum(wagebill),
-    .by = c(ref_date, est_name_native)
+    !is.na(wagebill) &
+      occupation_group != "otros"
   ) |>
   plot_trend(
-    group_col = "est_name_native",
+    group_col = "occupation_group",
     y_col = "wagebill",
     y_label = "Wagebill (real ₲, Dec 2021)"
   ) +
@@ -256,7 +234,7 @@ wagebill_est |>
   )
 
 ggsave(
-  "wagebill_by_est.png"
+  "wagebill_by_occupation_group.png"
 )
 
 # growth
@@ -278,6 +256,41 @@ wagebill |>
 ggsave(
   "wagebill_growth.png"
 )
+
+# growth by occupation group
+wagebill_by_occupation_group |>
+  filter(
+    !is.na(wagebill_growth) &
+      occupation_group != "otros"
+  ) |>
+  plot_trend(
+    group_col = "occupation_group",
+    y_col = "wagebill_growth",
+    y_label = "Wagebill Growth Rate"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  ggthemes::scale_color_solarized() +
+  ggplot2::guides(
+    color = ggplot2::guide_legend(
+      title = "Establishment",
+      title.position = "top",
+      ncol = 2,
+      override.aes = list(linewidth = 6)
+    )
+  ) +
+  facet_wrap(
+    vars(occupation_group)
+  )
 
 # growth by salary component
 wagebill_salary |>
