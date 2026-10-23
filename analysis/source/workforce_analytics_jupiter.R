@@ -565,92 +565,18 @@ ggplot2::ggsave(
 )
 
 ## count transitions in and out of each group
-transitions_in <- transitions_occupation_group |>
+transitions_flows <- transitions_occupation_group |>
   # simplify ref_date by quarter to reduce number of x-axis ticks
   mutate(
     ref_date = lubridate::floor_date(ref_date, unit = "quarter")
   ) |>
-  summarise(
-    transitions = sum(transitions),
-    .by = c(from, ref_date)
-  ) |>
-  rename(
-    occupation_group = from
-  )
-  
-transitions_out <- transitions_occupation_group |>
-  mutate(
-    ref_date = lubridate::floor_date(ref_date, unit = "quarter")
-  ) |>
-  summarise(
-    transitions = -sum(transitions),
-    .by = c(to, ref_date)
-  ) |>
-  rename(
-    occupation_group = to
-  )
+  compute_transition_flows()
 
-transitions_in_and_out <- transitions_in |>
-  inner_join(
-    transitions_out,
-    by = c("occupation_group", "ref_date"),
-    suffix = c("_in", "_out")
-  )
-
-transitions_in_and_out |>
-  ggplot(
-    aes(
-      x = ref_date
-    )
-  ) +
-  geom_col(
-    aes(
-      y = transitions_in,
-      fill = "Transitions In"
-    )
-  ) +
-  geom_col(
-    aes(
-      y = transitions_out,
-      fill = "Transitions Out"
-    )
-  ) +
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    color = "gray"
-  ) +
-  scale_fill_manual(
-    name = NULL,
-    values = c(
-      "Transitions In" = "#202d85",
-      "Transitions Out" = "#de4500"
-    )
-  ) +
-  scale_x_date(
-    date_breaks = "1 year",
-    date_labels = "%Y"
-  ) +
-  scale_y_continuous(
-    labels = scales::comma
-  ) +
-  labs(
-    x = "Year",
-    y = "Transitions"
-  ) +
-  theme(
-    legend.position = "bottom"
-  ) +
-  facet_wrap(
-    vars(occupation_group),
-    ncol = 2,
-    labeller = ggplot2::labeller(
-      occupation_group = \(x) stringr::str_wrap(x, width = 30)
-    )
-  )
+transitions_flows |>
+  plot_transition_flows()
 
 ggsave(
-  "transitions_in_and_out_by_occupation_group.png"
+  "transitions_flows_by_occupation_group.png"
 )
 
 ## alluvial

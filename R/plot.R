@@ -346,3 +346,59 @@ plot_movement_net <- function(movement_data, group_cols = NULL) {
 
   plot
 }
+
+plot_transition_flows <- function(transition_flows_data){
+  plot_baseline <- transition_flows_data |>
+    ggplot(
+    aes(
+      x = ref_date
+    )
+  ) +
+  geom_col(
+    aes(
+      y = transitions_inflow,
+      fill = "Transitions In"
+    )
+  ) +
+  geom_col(
+    aes(
+      y = transitions_outflow,
+      fill = "Transitions Out"
+    )
+  ) 
+  
+  plot <- plot_baseline +
+    geom_hline(
+      yintercept = 0,
+      linetype = "dashed",
+      color = "gray"
+    ) +
+    scale_fill_manual(
+      name = NULL,
+      values = c(
+        "Transitions In" = "#202d85",
+        "Transitions Out" = "#de4500"
+      )
+    ) +
+    scale_x_date(
+      date_breaks = "1 year",
+      date_labels = "%Y"
+    ) +
+    scale_y_continuous(
+      labels = scales::comma
+    ) +
+    labs(
+      x = "Year",
+      y = "Transitions"
+    ) +
+    theme(
+      legend.position = "bottom"
+    ) +
+    facet_wrap(
+      vars(.data[["group"]]),
+      ncol = 2,
+      labeller = ggplot2::labeller(
+        occupation_group = \(x) stringr::str_wrap(x, width = 30)
+      )
+    )
+}

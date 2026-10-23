@@ -74,3 +74,31 @@ deflate_wages.tbl_dbi <- function(data, wage_cols, country_code, base_month = "2
     ) |>
     select(-deflator)
 }
+
+compute_transition_flows <- function(transition_data) {
+  transitions_inflow <- transition_data |>
+    summarise(
+      transitions_inflow = sum(transitions),
+      .by = c(from, ref_date)
+    ) |>
+    rename(
+      group = from
+    )
+  
+  transitions_outflow <- transition_data |>
+    summarise(
+      transitions_outflow = -sum(transitions),
+      .by = c(to, ref_date)
+    ) |>
+    rename(
+      group = to
+    )
+
+  transitions_as_flows <- transitions_inflow |>
+    inner_join(
+      transitions_outflow,
+      by = c("group", "ref_date")
+    )
+  
+  transitions_as_flows
+}
