@@ -530,7 +530,8 @@ ggplot2::ggsave(
   height = 12
 )
 
-# transition
+
+# transition -------------------------------------------------------------
 ## establishment
 transitions_est <- pry_contracts_executive |>
   compute_transition(
@@ -594,6 +595,16 @@ ggplot2::ggsave(
   width = 12,
   height = 12
 )
+
+## by occupation
+transitions_occupation <- pry_contracts_executive |>
+  compute_transition(
+    group_col = "occupation"
+  ) |>
+  collect()
+
+transitions_occupation |>
+  plot_transition()
 
 # absorption capacity ----------------------------------------------------
 budget_by_est <- pry_budget |>

@@ -544,6 +544,37 @@ ggplot2::ggsave(
 
 # transition -------------------------------------------------------------
 # occupation
+transitions_occupation <- pry_contracts_judicial |>
+  compute_transition(
+    id_col = "personnel_id",
+    group_col = "occupation"
+  ) |>
+  collect()
+
+sample_occupation <- transitions_occupation |>
+  distinct(from) |>
+  slice_sample(n = 30) |>
+  pull(from)
+
+transitions_occupation |>
+  filter(
+    from %in% sample_occupation |
+      to %in% sample_occupation
+  ) |>
+  plot_transition(
+    weight_col = "transitions",
+    legend = FALSE
+  )
+
+ggplot2::ggsave(
+  "transitions_by_occupation.png",
+  path = here::here("analysis", "figs", "jupiter", "workforce"),
+  device = ragg::agg_png,
+  width = 18,
+  height = 12
+)
+
+# occupation group
 transitions_occupation_group <- pry_contracts_judicial |>
   compute_transition(
     id_col = "personnel_id",
