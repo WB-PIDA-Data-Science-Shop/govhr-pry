@@ -1,0 +1,1422 @@
+---
+title: "JUPITER Paraguay"
+subtitle: "Workforce and Wage Bill Analytics"
+author: "Galileu Kim"
+format:
+  revealjs:
+    slide-number: true
+    width: 1600
+    height: 900
+    embed-resources: true
+    fig-width: 9
+    fig-height: 6
+    fig-dpi: 150
+    fig-align: center
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: ragg_png
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(dplyr)
+library(duckplyr)
+library(ggplot2)
+library(ggalluvial)
+library(govhr)
+
+# downloads Roboto from Google Fonts (if needed) and registers it with
+# systemfonts, so ragg can find it
+systemfonts::require_font("Roboto")
+
+theme_set(
+  theme_classic(
+    base_size = 14,
+    base_family = "Roboto"
+  ) +
+    theme(
+      panel.grid = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+)
+
+source(
+  here::here("R", "analysis.R")
+)
+
+source(
+  here::here("R", "harmonize.R")
+)
+
+source(
+  here::here("R", "occupation.R")
+)
+
+source(
+  here::here("R", "plot.R")
+)
+
+set.seed(2026)
+
+con <- DBI::dbConnect(
+  duckdb::duckdb(),
+  here::here("data", "data-clean", "govhr_pry.duckdb"),
+  read_only = TRUE
+)
+
+pry_est <- tbl(con, "pry_est")
+pry_personnel <- tbl(con, "pry_personnel")
+pry_contracts <- tbl(con, "pry_contracts")
+
+pry_personnel <- pry_personnel |>
+  mutate(
+    ref_date = as.Date(ref_date)
+  ) |>
+  filter(
+    ref_date >= as.Date("2016-01-01"),
+    ref_date <= as.Date("2025-12-01")
+  )
+```
+
+# Workforce
+
+```{r}
+#| label: workforce-data
+#| include: false
+pry_est_judicial <- pry_est |>
+  filter(
+    adm1 == "PODER JUDICIAL" &
+      adm2 == "CORTE SUPREMA DE JUSTICIA"
+  )
+
+pry_contracts_judicial <- pry_contracts |>
+  inner_join(
+    pry_est_judicial,
+    by = c("est_id", "ref_date")
+  ) |>
+  mutate(
+    ref_date = as.Date(ref_date),
+    whours = as.double(whours)
+  ) |>
+  # there seems to be data gaps before 2016
+  filter(
+    ref_date >= as.Date("2016-01-01"),
+    ref_date <= as.Date("2025-12-01")
+  ) |>
+  classify_occupation_group()
+```
+
+## Headcount
+
+```{r}
+#| label: headcount
+headcount <- pry_contracts_judicial |>
+  compute_headcount() |>
+  collect()
+
+headcount |>
+  ggplot(
+    aes(
+      x = ref_date,
+      y = headcount
+    )
+  ) +
+  geom_line() +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  scale_y_continuous(
+    labels = scales::comma_format()
+  ) +
+  coord_cartesian(
+    ylim = c(1.2e4, 1.5e4)
+  ) +
+  labs(
+    x = "Year",
+    y = "Headcount"
+  )
+```
+
+## Headcount by occupation group
+
+```{r}
+#| label: headcount-by-occupation-group
+headcount_by_occupation_group <- pry_contracts_judicial |>
+  compute_headcount(
+    group_cols = c("occupation_group")
+  ) |>
+  collect()
+
+headcount_by_occupation_group |>
+  filter(
+    occupation_group != "Otros"
+  ) |>
+  ggplot() +
+  geom_line(
+    aes(ref_date, headcount, color = occupation_group)
+  ) +
+  labs(
+    x = "Year",
+    y = "Headcount"
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  scale_color_manual(
+    name = "Occupation Group",
+    values = c(
+      "Miembro de Tribunal" = "#202d85",
+      "Juez de Primera Instancia" = "#de4500",
+      "Juez de Paz" = "#f2a541"
+    )
+  ) +
+  guides(
+    color = guide_legend(
+      title = "Occupation Group",
+      nrow = 2,
+      byrow = TRUE
+    )
+  )
+```
+
+## Headcount by contract type
+
+```{r}
+#| label: headcount-by-contract-type
+headcount_by_contract_type <- pry_contracts_judicial |>
+  compute_headcount(
+    group_cols = c("contract_type")
+  ) |>
+  collect()
+
+headcount_by_contract_type |>
+  plot_trend(
+    group_col = "contract_type",
+    y_col = "headcount",
+    y_label = "Headcount"
+  )
+```
+
+## Headcount by age group
+
+```{r}
+#| label: headcount-by-age-group
+headcount_by_age <- pry_personnel |>
+  inner_join(
+    pry_contracts_judicial |>
+      distinct(personnel_id, ref_date),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  compute_headcount(
+    group_cols = c("age")
+  ) |>
+  collect()
+
+headcount_by_age_group <- headcount_by_age |>
+  filter(
+    !is.na(age)
+  ) |>
+  mutate(
+    age = as.numeric(age)
+  ) |>
+  classify_age_group() |>
+  summarise(
+    headcount = sum(headcount),
+    .by = c(ref_date, age_group)
+  ) |>
+  mutate(
+    share_headcount = headcount / sum(headcount, na.rm = TRUE),
+    .by = ref_date
+  )
+
+headcount_by_age_group |>
+  plot_area(
+    x = ref_date,
+    y = share_headcount,
+    fill = age_group,
+    xlab = "Year",
+    ylab = "Share of Headcount"
+  ) +
+  scale_fill_manual(
+    name = "Age Group",
+    values = c(
+      "<30" = "#202d85",
+      "30-39" = "#de4500",
+      "40-49" = "#f2a541",
+      "50-59" = "#47b679",
+      "60+" = "#8c8c8c"
+    )
+  )
+```
+
+## Headcount by gender
+
+```{r}
+#| label: headcount-by-gender
+headcount_by_gender <- pry_personnel |>
+  inner_join(
+    pry_contracts_judicial |>
+      distinct(personnel_id, ref_date),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  compute_headcount(
+    group_cols = c("gender")
+  ) |>
+  collect()
+
+headcount_by_gender |>
+  plot_area(
+    x = ref_date,
+    y = share_headcount,
+    fill = gender,
+    xlab = "Year",
+    ylab = "Share of Headcount"
+  ) +
+  scale_fill_manual(
+    name = "Gender",
+    labels = c(
+      "FEMENINO" = "Women",
+      "MASCULINO" = "Men"
+    ),
+    values = c(
+      "MASCULINO" = "#202d85",
+      "FEMENINO" = "#de4500"
+    )
+  )
+```
+
+## Gender composition by occupation group
+
+```{r}
+#| label: headcount-by-gender-occupation-group
+#| fig-width: 12
+#| fig-height: 8
+headcount_by_gender_occupation <- pry_personnel |>
+  inner_join(
+    pry_contracts_judicial |>
+      distinct(personnel_id, ref_date, occupation_group),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  compute_headcount(
+    group_cols = c("gender", "occupation_group")
+  ) |>
+  collect() |>
+  mutate(
+    share_headcount = headcount / sum(headcount, na.rm = TRUE),
+    .by = c(ref_date, occupation_group)
+  )
+
+headcount_by_gender_occupation |>
+  plot_area(
+    x = ref_date,
+    y = share_headcount,
+    fill = gender,
+    xlab = "Year",
+    ylab = "Share of Headcount"
+  ) +
+  scale_fill_manual(
+    name = "Gender",
+    labels = c(
+      "FEMENINO" = "Women",
+      "MASCULINO" = "Men"
+    ),
+    values = c(
+      "MASCULINO" = "#202d85",
+      "FEMENINO" = "#de4500"
+    )
+  ) +
+  geom_hline(
+    yintercept = 0.5,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  facet_wrap(
+    vars(occupation_group),
+    ncol = 2,
+    labeller = ggplot2::labeller(
+      occupation_group = \(x) stringr::str_wrap(x, width = 30)
+    )
+  )
+```
+
+# Movements
+
+## Hires and separations
+
+```{r}
+#| label: movements
+movement <- pry_contracts_judicial |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_movement() |>
+  collect()
+
+movement |>
+  plot_movement_joint()
+```
+
+## Net movements
+
+```{r}
+#| label: movements-net
+movement |>
+  plot_movement_net()
+```
+
+## Hires and separations by occupation group
+
+```{r}
+#| label: movements-by-occupation-group
+#| fig-width: 12
+#| fig-height: 12
+movement_by_occupation <- pry_contracts_judicial |>
+  left_join(
+    pry_personnel |> select(personnel_id, ref_date, employment_status),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  compute_movement(
+    group_cols = c("occupation_group")
+  ) |>
+  collect()
+
+movement_by_occupation |>
+  plot_movement_joint(
+    group_cols = c("occupation_group")
+  )
+```
+
+## Net movements by occupation group
+
+```{r}
+#| label: net-movements-by-occupation-group
+#| fig-width: 12
+#| fig-height: 12
+movement_by_occupation |>
+  plot_movement_net(
+    group_cols = c("occupation_group")
+  )
+```
+
+## Hires and separations by age group
+
+```{r}
+#| label: movements-by-age-group
+#| fig-width: 12
+#| fig-height: 8
+movement_by_age_group <- pry_contracts_judicial |>
+  left_join(
+    pry_personnel |> select(personnel_id, ref_date, employment_status, age),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  filter(
+    !is.na(age)
+  ) |>
+  classify_age_group() |>
+  compute_movement(
+    group_cols = c("age_group")
+  ) |>
+  collect()
+
+movement_by_age_group |>
+  plot_movement_joint(
+    group_cols = c("age_group")
+  )
+```
+
+## Net movements by age group
+
+```{r}
+#| label: net-movements-by-age-group
+#| fig-width: 12
+#| fig-height: 8
+movement_by_age_group |>
+  plot_movement_net(
+    group_cols = c("age_group")
+  )
+```
+
+## Decomposition of headcount change by age group
+
+```{r}
+#| label: movement-decomposition-by-age-group
+#| fig-width: 12
+#| fig-height: 8
+movement_decomposition_by_age_group <- movement_by_age_group |>
+  arrange(ref_date) |>
+  mutate(
+    net_change = headcount - lag(headcount, order_by = ref_date),
+    net_aging = net_change - (hires - separations),
+    .by = age_group
+  ) |>
+  filter(
+    !is.na(net_change)
+  )
+
+movement_decomposition_by_age_group |>
+  mutate(
+    separations = -separations
+  ) |>
+  tidyr::pivot_longer(
+    c(hires, separations, net_aging),
+    names_to = "component",
+    values_to = "value"
+  ) |>
+  ggplot(
+    aes(x = ref_date)
+  ) +
+  geom_col(
+    aes(
+      y = value,
+      fill = component
+    ),
+    color = "white",
+    linewidth = 0.1,
+    position = "stack"
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  scale_fill_manual(
+    name = "Component",
+    labels = c(
+      "hires" = "Hires",
+      "separations" = "Separations",
+      "net_aging" = "Transitions through aging"
+    ),
+    values = c(
+      "hires" = "#202d85",
+      "separations" = "#de4500",
+      "net_aging" = "#f2a541"
+    )
+  ) +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  scale_y_continuous(
+    labels = scales::comma
+  ) +
+  labs(
+    x = "Year",
+    y = "Change in Headcount"
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  facet_wrap(
+    vars(age_group),
+    ncol = 2
+  )
+```
+
+## Hires and separations by gender
+
+```{r}
+#| label: movement-by-gender
+#| fig-width: 12
+#| fig-height: 9
+movement_by_gender <- pry_contracts_judicial |>
+  inner_join(
+    pry_personnel |>
+      select(personnel_id, gender),
+    by = c("personnel_id")
+  ) |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_movement(
+    group_cols = c("gender")
+  ) |>
+  collect()
+
+movement_by_gender |>
+  plot_movement_joint(
+    group_cols = c("gender")
+  )
+```
+
+# Transitions
+
+## Transitions across occupations
+
+A random sample of 30 occupations.
+
+```{r}
+#| label: transitions-by-occupation
+#| fig-width: 18
+#| fig-height: 12
+transitions_occupation <- pry_contracts_judicial |>
+  compute_transition(
+    id_col = "personnel_id",
+    group_col = "occupation"
+  ) |>
+  collect()
+
+sample_occupation <- transitions_occupation |>
+  distinct(from) |>
+  slice_sample(n = 30) |>
+  pull(from)
+
+transitions_occupation |>
+  filter(
+    from %in% sample_occupation |
+      to %in% sample_occupation
+  ) |>
+  plot_transition(
+    weight_col = "transitions",
+    legend = FALSE
+  )
+```
+
+## Transitions across occupation groups
+
+```{r}
+#| label: transitions-by-occupation-group
+#| fig-width: 12
+#| fig-height: 12
+transitions_occupation_group <- pry_contracts_judicial |>
+  compute_transition(
+    id_col = "personnel_id",
+    group_col = "occupation_group"
+  ) |>
+  collect()
+
+transitions_occupation_group |>
+  plot_transition(
+    weight_col = "transitions"
+  )
+```
+
+## Transitions in and out of occupation groups
+
+```{r}
+#| label: transitions-flows-by-occupation-group
+transitions_flows <- transitions_occupation_group |>
+  # quarters instead of months keep the x-axis readable
+  mutate(
+    ref_date = lubridate::floor_date(ref_date, unit = "quarter")
+  ) |>
+  compute_transition_flows()
+
+transitions_flows |>
+  plot_transition_flows()
+```
+
+## Transitions between occupation groups
+
+```{r}
+#| label: transitions-by-occupation-alluvial
+transitions_occupation_group |>
+  summarise(
+    transitions = sum(transitions),
+    .by = c(from, to)
+  ) |>
+  ggplot(
+    aes(
+      axis1 = from,
+      axis2 = to,
+      y = transitions
+    )
+  ) +
+  geom_alluvium(
+    aes(fill = from)
+  ) +
+  geom_stratum() +
+  geom_text(
+    aes(label = after_stat(stratum)),
+    stat = "stratum"
+  ) +
+  scale_x_discrete(
+    limits = c("Original occupation", "Next occupation")
+  ) +
+  scale_y_continuous(
+    labels = scales::comma
+  ) +
+  scale_fill_manual(
+    name = "Original occupation",
+    values = c(
+      "Juez de Paz" = "#202d85",
+      "Juez de Primera Instancia" = "#de4500",
+      "Miembro de Tribunal" = "#f2a541",
+      "Otros" = "#6c757d"
+    )
+  ) +
+  labs(
+    y = "Transitions"
+  )
+```
+
+## Transitions between occupation groups by gender
+
+```{r}
+#| label: transitions-by-occupation-gender-alluvial
+#| fig-width: 12
+#| fig-height: 10
+transitions_occupation_gender <- pry_contracts_judicial |>
+  detect_transition(
+    id_col = "personnel_id",
+    group_col = "occupation_group"
+  ) |>
+  inner_join(
+    pry_personnel |> select(personnel_id, ref_date, gender),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  collect()
+
+transitions_occupation_gender |>
+  summarise(
+    transitions = n(),
+    .by = c(from, to, gender)
+  ) |>
+  mutate(
+    transition_rate = transitions / sum(transitions, na.rm = TRUE),
+    .by = gender
+  ) |>
+  ggplot(
+    aes(
+      axis1 = from,
+      axis2 = to,
+      y = transition_rate
+    )
+  ) +
+  geom_alluvium(
+    aes(fill = from)
+  ) +
+  geom_stratum(
+    width = 1/2
+  ) +
+  geom_text(
+    aes(
+      label = after_stat(
+        stringr::str_wrap(stratum, width = 20)
+      )
+    ),
+    stat = "stratum"
+  ) +
+  scale_x_discrete(
+    limits = c("Original occupation", "Next occupation")
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  scale_fill_manual(
+    name = "Original occupation",
+    values = c(
+      "Juez de Paz" = "#202d85",
+      "Juez de Primera Instancia" = "#de4500",
+      "Miembro de Tribunal" = "#f2a541",
+      "Otros" = "#6c757d"
+    )
+  ) +
+  labs(
+    y = "Transitions"
+  ) +
+  theme(
+    legend.position = "none"
+  ) +
+  facet_wrap(
+    vars(gender),
+    ncol = 1
+  )
+```
+
+## Transitions across age groups
+
+```{r}
+#| label: transitions-by-age-group
+#| fig-width: 12
+#| fig-height: 8
+transitions_age_group <- pry_contracts_judicial |>
+  left_join(
+    pry_personnel |> select(personnel_id, ref_date, age),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  filter(
+    !is.na(age)
+  ) |>
+  classify_age_group() |>
+  compute_transition(
+    id_col = "personnel_id",
+    group_col = "age_group"
+  ) |>
+  collect()
+
+transitions_age_group |>
+  mutate(
+    from_to = paste(from, to, sep = " -> ")
+  ) |>
+  ggplot(
+    aes(
+      ref_date,
+      transitions,
+      color = from_to
+    )
+  ) +
+  geom_line() +
+  geom_point() +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  scale_color_manual(
+    name = "Transition",
+    values = c(
+      "<30 -> 30-39" = "#202d85",
+      "30-39 -> 40-49" = "#de4500",
+      "40-49 -> 50-59" = "#f2a541",
+      "50-59 -> 60+" = "#6c757d"
+    )
+  ) +
+  facet_wrap(
+    vars(from_to),
+    ncol = 2
+  )
+```
+
+# Wage bill
+
+```{r}
+#| label: wagebill-data
+#| include: false
+# deflating here rather than in workforce-data keeps the CPI join out of the
+# workforce queries, which never touch wages
+pry_contracts_judicial_real <- pry_contracts_judicial |>
+  mutate(
+    across(
+      c(base_salary_lcu, allowance_lcu, gross_salary_lcu),
+      as.double
+    )
+  ) |>
+  deflate_wages(
+    wage_cols = c("base_salary_lcu", "allowance_lcu", "gross_salary_lcu"),
+    country_code = "PRY"
+  )
+```
+
+## Wage bill
+
+```{r}
+#| label: wagebill
+wagebill <- pry_contracts_judicial_real |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_wagebill(
+    measure_col = "gross_salary_lcu"
+  ) |>
+  collect()
+
+wagebill |>
+  plot_trend(
+    group_col = c("ref_date"),
+    y_col = "wagebill",
+    y_label = "Wagebill (real ₲, Dec 2021)"
+  ) +
+  coord_cartesian(
+    ylim = c(0, NA)
+  )
+```
+
+## Wage bill by salary component
+
+```{r}
+#| label: wagebill-by-salary-component
+wagebill_salary <- pry_contracts_judicial_real |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_wagebill(
+    measure_col = "base_salary_lcu"
+  ) |>
+  collect() |>
+  select(
+    ref_date,
+    wagebill_base_salary = wagebill,
+    growth_base_salary = wagebill_growth
+  ) |>
+  inner_join(
+    pry_contracts_judicial_real |>
+      mutate(
+        employment_status = "active"
+      ) |>
+      compute_wagebill(
+        measure_col = "allowance_lcu"
+      ) |>
+      collect() |>
+      select(
+        ref_date,
+        wagebill_allowance = wagebill,
+        growth_allowance = wagebill_growth
+      ),
+    by = "ref_date"
+  )
+
+wagebill_salary |>
+  tidyr::pivot_longer(
+    c(wagebill_base_salary, wagebill_allowance),
+    names_to = "component",
+    values_to = "wagebill"
+  ) |>
+  mutate(
+    component = recode(
+      component,
+      "wagebill_base_salary" = "Base Salary",
+      "wagebill_allowance" = "Allowances"
+    ) |>
+      forcats::fct_relevel(
+        "Base Salary",
+        "Allowances"
+      )
+  ) |>
+  plot_trend(
+    group_col = c("component"),
+    y_col = "wagebill",
+    y_label = "Wagebill (real ₲, Dec 2021)"
+  ) +
+  scale_color_manual(
+    name = "Salary Component",
+    values = c(
+      "Base Salary" = "#202d85",
+      "Allowances" = "#de4500"
+    )
+  ) +
+  facet_wrap(
+    vars(component)
+  ) +
+  theme(
+    legend.position = "none"
+  ) +
+  coord_cartesian(
+    ylim = c(0, NA)
+  )
+```
+
+## Wage bill by occupation group
+
+```{r}
+#| label: wagebill-by-occupation-group
+wagebill_by_occupation_group <- pry_contracts_judicial_real |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_wagebill(
+    group_cols = c("occupation_group")
+  ) |>
+  collect()
+
+wagebill_by_occupation_group |>
+  filter(
+    !is.na(wagebill) &
+      occupation_group != "Otros"
+  ) |>
+  plot_trend(
+    group_col = "occupation_group",
+    y_col = "wagebill",
+    y_label = "Wagebill (real ₲, Dec 2021)"
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  ggthemes::scale_color_solarized() +
+  guides(
+    color = guide_legend(
+      title = "Occupation Group",
+      title.position = "top",
+      ncol = 2,
+      override.aes = list(linewidth = 6)
+    )
+  )
+```
+
+## Wage bill growth
+
+```{r}
+#| label: wagebill-growth
+wagebill |>
+  plot_trend(
+    group_col = c("ref_date"),
+    y_col = "wagebill_growth",
+    y_label = "Wagebill Growth Rate"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  )
+```
+
+## Wage bill growth by occupation group
+
+```{r}
+#| label: wagebill-growth-by-occupation-group
+wagebill_by_occupation_group |>
+  filter(
+    !is.na(wagebill_growth) &
+      occupation_group != "Otros"
+  ) |>
+  plot_trend(
+    group_col = "occupation_group",
+    y_col = "wagebill_growth",
+    y_label = "Wagebill Growth Rate"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  ggthemes::scale_color_solarized() +
+  guides(
+    color = guide_legend(
+      title = "Occupation Group",
+      title.position = "top",
+      ncol = 2,
+      override.aes = list(linewidth = 6)
+    )
+  ) +
+  facet_wrap(
+    vars(occupation_group)
+  )
+```
+
+## Wage bill growth by salary component
+
+```{r}
+#| label: wagebill-growth-by-salary-component
+wagebill_salary |>
+  tidyr::pivot_longer(
+    c(growth_base_salary, growth_allowance),
+    names_to = "component",
+    values_to = "growth_rate"
+  ) |>
+  mutate(
+    component = recode(
+      component,
+      "growth_base_salary" = "Base Salary",
+      "growth_allowance" = "Allowances"
+    ) |>
+      forcats::fct_relevel(
+        "Base Salary",
+        "Allowances"
+      )
+  ) |>
+  plot_trend(
+    group_col = c("component"),
+    y_col = "growth_rate",
+    y_label = "Wagebill Growth Rate"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  scale_color_manual(
+    name = "Salary Component",
+    values = c(
+      "Base Salary" = "#202d85",
+      "Allowances" = "#de4500"
+    )
+  ) +
+  facet_wrap(
+    vars(component)
+  ) +
+  theme(
+    legend.position = "none"
+  )
+```
+
+## Decomposition of wage bill growth
+
+```{r}
+#| label: wagebill-growth-decomposition
+wagebill_growth_decomposition <- pry_contracts_judicial_real |>
+  compute_growth_decomposition(
+    measure_col = "base_salary_lcu"
+  ) |>
+  collect()
+
+wagebill_growth_decomposition |>
+  tidyr::pivot_longer(
+    c(employment_effect, wage_effect, interaction_effect),
+    names_to = "effect_type",
+    values_to = "effect_value"
+  ) |>
+  ggplot(
+    aes(
+      x = ref_date,
+      y = effect_value,
+      fill = effect_type,
+      group = effect_type
+    )
+  ) +
+  geom_col(
+    position = "stack"
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray"
+  ) +
+  scale_y_continuous(
+    labels = scales::label_number(
+      scale_cut = scales::cut_short_scale()
+    )
+  ) +
+  scale_fill_manual(
+    name = "Effect Type",
+    labels = c(
+      "employment_effect" = "Employment Effect",
+      "wage_effect" = "Compensation Effect",
+      "interaction_effect" = "Interaction Effect"
+    ),
+    values = c(
+      "employment_effect" = "#202d85",
+      "wage_effect" = "#de4500",
+      "interaction_effect" = "#f5a623"
+    )
+  ) +
+  labs(
+    x = "Time",
+    y = "Magnitude of Effect"
+  )
+```
+
+## Wage bill share by salary component
+
+```{r}
+#| label: wagebill-share-by-component
+wagebill_salary |>
+  mutate(
+    total_wagebill = wagebill_base_salary + wagebill_allowance,
+    share_base_salary = wagebill_base_salary / total_wagebill,
+    share_allowance = wagebill_allowance / total_wagebill
+  ) |>
+  tidyr::pivot_longer(
+    c(share_base_salary, share_allowance),
+    names_to = "component",
+    values_to = "share_wagebill"
+  ) |>
+  ggplot(
+    aes(
+      x = ref_date,
+      y = share_wagebill,
+      fill = component,
+      group = component
+    )
+  ) +
+  geom_area(
+    position = "stack"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1)
+  ) +
+  theme(
+    legend.position = "bottom"
+  ) +
+  scale_fill_manual(
+    name = "Wagebill Component",
+    labels = c(
+      "share_base_salary" = "Base Salary",
+      "share_allowance" = "Allowances"
+    ),
+    values = c(
+      "share_base_salary" = "#202d85",
+      "share_allowance" = "#de4500"
+    )
+  )
+```
+
+# Compensation
+
+## Average wage
+
+```{r}
+#| label: wage
+pry_compensation <- pry_contracts_judicial_real |>
+  compute_wage(
+    measure_col = "gross_salary_lcu"
+  ) |>
+  collect()
+
+pry_compensation |>
+  plot_trend(
+    group_col = c("ref_date"),
+    y_col = "wage",
+    y_label = "Average wage"
+  )
+```
+
+## Average wage by salary component
+
+```{r}
+#| label: wage-by-salary-component
+pry_wage_by_component <- pry_contracts_judicial_real |>
+  compute_wage(
+    measure_col = "base_salary_lcu"
+  ) |>
+  select(
+    ref_date,
+    wage_base_salary = wage
+  ) |>
+  left_join(
+    pry_contracts_judicial_real |>
+      compute_wage(
+        measure_col = "allowance_lcu"
+      ) |>
+      select(
+        ref_date,
+        wage_allowance = wage
+      ),
+    by = "ref_date"
+  ) |>
+  collect()
+
+pry_wage_by_component |>
+  tidyr::pivot_longer(
+    c(wage_base_salary, wage_allowance),
+    names_to = "component",
+    values_to = "wage"
+  ) |>
+  mutate(
+    component = recode(
+      component,
+      "wage_base_salary" = "Base Salary",
+      "wage_allowance" = "Allowances"
+    ) |>
+      forcats::fct_relevel(
+        "Base Salary",
+        "Allowances"
+      )
+  ) |>
+  plot_trend(
+    group_col = c("component"),
+    y_col = "wage",
+    y_label = "Average wage (real ₲, Dec 2021)"
+  ) +
+  scale_color_manual(
+    name = "Salary Component",
+    values = c(
+      "Base Salary" = "#202d85",
+      "Allowances" = "#de4500"
+    )
+  ) +
+  facet_wrap(
+    vars(component)
+  ) +
+  theme(
+    legend.position = "none"
+  )
+```
+
+## Average wage by contract type
+
+```{r}
+#| label: wage-by-contract-type
+pry_wage_by_contract <- pry_contracts_judicial_real |>
+  filter(
+    !is.na(contract_type)
+  ) |>
+  compute_wage(
+    measure_col = "gross_salary_lcu",
+    group_cols = c("contract_type")
+  ) |>
+  collect()
+
+pry_wage_by_contract |>
+  mutate(
+    contract_type = forcats::fct_relevel(
+      contract_type,
+      "permanent",
+      "fixed-term"
+    ) |>
+      recode(
+        "permanent" = "Permanent",
+        "fixed-term" = "Fixed-Term"
+      )
+  ) |>
+  plot_trend(
+    group_col = c("contract_type"),
+    y_col = "wage",
+    y_label = "Average wage (real ₲, Dec 2021)"
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = FALSE,
+    linewidth = 1,
+    color = "#f5a623"
+  ) +
+  scale_color_manual(
+    name = "Type of Contract",
+    values = c(
+      "Fixed-Term" = "#de4500",
+      "Permanent" = "#202d85"
+    )
+  ) +
+  facet_wrap(
+    vars(contract_type)
+  ) +
+  theme(
+    legend.position = "none"
+  )
+```
+
+## Average wage by gender
+
+```{r}
+#| label: wage-by-gender
+pry_wage_by_gender <- pry_contracts_judicial_real |>
+  left_join(
+    pry_personnel |>
+      select(
+        personnel_id,
+        ref_date,
+        gender
+      ),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  filter(
+    !is.na(gender)
+  ) |>
+  compute_wage(
+    measure_col = "gross_salary_lcu",
+    group_cols = c("gender")
+  ) |>
+  collect()
+
+pry_wage_by_gender |>
+  mutate(
+    gender = forcats::fct_relevel(
+      gender,
+      "FEMENINO",
+      "MASCULINO"
+    )
+  ) |>
+  plot_trend(
+    group_col = c("gender"),
+    y_col = "wage",
+    y_label = "Average wage (real ₲, Dec 2021)"
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = FALSE,
+    linewidth = 1,
+    color = "#f5a623"
+  ) +
+  scale_color_manual(
+    name = "Gender",
+    values = c(
+      "FEMENINO" = "#de4500",
+      "MASCULINO" = "#202d85"
+    )
+  ) +
+  facet_wrap(
+    vars(gender)
+  ) +
+  theme(
+    legend.position = "none"
+  )
+```
+
+## Wage distribution
+
+```{r}
+#| label: wage-distribution
+wage_distribution <- pry_contracts_judicial_real |>
+  compute_percentile(
+    measure_col = "gross_salary_lcu",
+    binwidth = 1e6
+  ) |>
+  collect()
+
+wage_distribution |>
+  plot_histogram(
+    group_col = c("ref_date")
+  ) +
+  scale_x_continuous(
+    labels = scales::label_number(
+      scale_cut = scales::cut_short_scale()
+    )
+  ) +
+  coord_cartesian(
+    xlim = c(0, 2.5e7)
+  )
+```
+
+## Wage distribution by gender
+
+```{r}
+#| label: wage-distribution-by-gender
+wage_distribution_by_gender <- pry_contracts_judicial_real |>
+  left_join(
+    pry_personnel |>
+      select(
+        personnel_id,
+        ref_date,
+        gender
+      ),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  filter(
+    !is.na(gender)
+  ) |>
+  compute_percentile(
+    measure_col = "gross_salary_lcu",
+    group_cols = c("gender"),
+    binwidth = 1e6
+  ) |>
+  collect()
+
+wage_distribution_by_gender |>
+  plot_histogram(
+    group_col = c("gender")
+  ) +
+  geom_col(
+    aes(
+      fill = gender
+    )
+  ) +
+  scale_x_continuous(
+    labels = scales::label_number(
+      scale_cut = scales::cut_short_scale()
+    )
+  ) +
+  scale_fill_manual(
+    name = "Gender",
+    values = c(
+      "FEMENINO" = "#de4500",
+      "MASCULINO" = "#202d85"
+    )
+  ) +
+  theme(
+    legend.position = "none"
+  ) +
+  coord_cartesian(
+    xlim = c(0, 2.5e7)
+  )
+```
+
+```{r}
+#| label: teardown
+#| include: false
+DBI::dbDisconnect(con, shutdown = TRUE)
+```

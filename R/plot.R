@@ -401,4 +401,6 @@ plot_transition_flows <- function(transition_flows_data){
         occupation_group = \(x) stringr::str_wrap(x, width = 30)
       )
     )
+  
+  plot
 }
