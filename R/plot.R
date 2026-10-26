@@ -196,17 +196,24 @@ plot_transition <- function(
   )
 }
 
-plot_change <- function(data, x_col, y_col, xlab = NULL, ylab = NULL) {
-  data |>
-    mutate(
-      change_sign = if_else({{ y_col }} >= 0, "positive", "negative")
+plot_change <- function(data, x_col, y_col, group_col = NULL, x_lab = NULL, y_lab = NULL) {
+  change_data <- data |>
+    # the first period has no prior value to change from, and its NA sign
+    # would otherwise fall outside the fill scale
+    filter(
+      !is.na(.data[[y_col]])
     ) |>
+    mutate(
+      change_sign = if_else(.data[[y_col]] >= 0, "positive", "negative")
+    )
+
+  plot <- change_data |>
     ggplot() +
     geom_col(
       aes(
-        x = {{ x_col }},
-        y = {{ y_col }},
-        fill = change_sign
+        x = .data[[x_col]],
+        y = .data[[y_col]],
+        fill = .data[["change_sign"]]
       )
     ) +
     geom_hline(
@@ -224,11 +231,46 @@ plot_change <- function(data, x_col, y_col, xlab = NULL, ylab = NULL) {
       )
     ) +
     labs(
-      x = xlab,
-      y = ylab
+      x = x_lab,
+      y = y_lab
     ) +
     scale_y_continuous(
       labels = scales::percent_format(accuracy = 0.1)
+    )
+
+  if (x_col == "ref_date") {
+    plot <- plot +
+      scale_x_date(
+        date_breaks = "1 year",
+        date_labels = "%Y"
+      )
+  }
+
+  if (!is.null(group_col)) {
+    plot <- facet_by_group(
+      plot,
+      change_data,
+      group_col
+    )
+  }
+
+  plot
+}
+
+facet_by_group <- function(plot, data, group_col) {
+  missing_cols <- setdiff(group_col, names(data))
+
+  if (length(missing_cols) > 0) {
+    rlang::abort(
+      paste0("`group_col` not found in data: ", paste(missing_cols, collapse = ", "))
+    )
+  }
+
+  plot +
+    ggplot2::facet_wrap(
+      ggplot2::vars(!!!rlang::syms(group_col)),
+      # occupation group names run long enough to overlap neighbouring strips
+      labeller = ggplot2::label_wrap_gen(width = 30)
     )
 }
 
@@ -347,6 +389,66 @@ plot_movement_net <- function(movement_data, group_cols = NULL) {
   plot
 }
 
+plot_growth <- function(data, y_col, group_cols = NULL, y_lab = "Rate of Change") {
+  change_data <- data |>
+    mutate(
+      sign_change = if_else(
+        .data[[y_col]] >= 0,
+        "positive",
+        "negative"
+      )
+    )
+
+  plot <- change_data |>
+    ggplot() +
+    geom_col(
+      aes(
+        x = .data[["ref_date"]],
+        y = .data[[y_col]],
+        fill = sign_change
+      ),
+      color = "white",
+      linewidth = 0.1
+    ) +
+    theme(
+      legend.position = "none"
+    ) +
+    # different colors depending on whether net rate is positive or negative
+    scale_fill_manual(
+      values = c(
+        "positive" = "#202d85",
+        "negative" = "#de4500"
+      )
+    ) +
+    scale_y_continuous(
+      labels = scales::percent_format(accuracy = 0.1)
+    ) +
+    labs(
+      x = "Year",
+      y = y_lab
+    ) 
+
+  if (!is.null(group_cols)) {
+    missing_cols <- setdiff(group_cols, names(data))
+
+    if (length(missing_cols) > 0) {
+      rlang::abort(
+        paste0("`group_cols` not found in data: ", paste(missing_cols, collapse = ", "))
+      )
+    }
+
+    plot <- plot +
+      ggplot2::facet_wrap(
+        ggplot2::vars(!!!rlang::syms(group_cols)),
+        labeller = ggplot2::labeller(
+          occupation_group = \(x) stringr::str_wrap(x, width = 30)
+        )
+      )
+  }
+
+  plot
+}
+
 plot_transition_flows <- function(transition_flows_data){
   plot_baseline <- transition_flows_data |>
     ggplot(
@@ -402,5 +504,48 @@ plot_transition_flows <- function(transition_flows_data){
       )
     )
   
+  plot
+}
+
+plot_line <- function(data, x_col, y_col, group_col = NULL, x_lab = NULL, y_lab = NULL) {
+  line_aes <- aes(
+    x = .data[[x_col]],
+    y = .data[[y_col]]
+  )
+
+  # `.data[[NULL]]` errors, so the color mapping only exists when grouping
+  if (!is.null(group_col)) {
+    line_aes <- modifyList(
+      line_aes,
+      aes(color = .data[[group_col]])
+    )
+  }
+
+  plot <- data |>
+    ggplot() +
+    geom_line(line_aes) +
+    labs(
+      x = x_lab,
+      y = y_lab
+    )
+    
+  if(x_col == "ref_date") {
+    plot <- plot +
+      scale_x_date(
+        date_breaks = "1 year",
+        date_labels = "%Y"
+      ) +
+      theme(
+        legend.position = "bottom"
+      )
+  }
+
+  if (
+    !is.null(group_col)
+  ) {
+    plot <- plot +
+      scale_color_discrete(name = group_col)
+  }
+
   plot
 }

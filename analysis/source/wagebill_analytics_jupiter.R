@@ -340,6 +340,10 @@ wagebill_salary |>
     legend.position = "none"
   )
 
+ggsave(
+  "wagebill_growth_by_salary_component.png"
+)
+
 ## decomposition
 wagebill_growth_decomposition <- pry_contracts_judicial |>
   compute_growth_decomposition(
@@ -387,10 +391,17 @@ wagebill_growth_decomposition |>
       "interaction_effect" = "#f5a623"
     )
   ) +
+  theme(
+    legend.position = "bottom"
+  ) +
   labs(
     x = "Time",
     y = "Magnitude of Effect"
   )
+
+ggsave(
+  "wagebill_growth_decomposition.png"
+)
 
 # compensation
 ## overall

@@ -10,7 +10,7 @@ format:
     embed-resources: true
     fig-width: 9
     fig-height: 6
-    fig-dpi: 150
+    fig-dpi: 160
     fig-align: center
 execute:
   echo: false
@@ -120,16 +120,11 @@ headcount <- pry_contracts_judicial |>
   collect()
 
 headcount |>
-  ggplot(
-    aes(
-      x = ref_date,
-      y = headcount
-    )
-  ) +
-  geom_line() +
-  scale_x_date(
-    date_breaks = "1 year",
-    date_labels = "%Y"
+  plot_line(
+    x_col = "ref_date",
+    y_col = "headcount",
+    x_lab = "Time",
+    y_lab = "Headcount"
   ) +
   scale_y_continuous(
     labels = scales::comma_format()
@@ -157,13 +152,12 @@ headcount_by_occupation_group |>
   filter(
     occupation_group != "Otros"
   ) |>
-  ggplot() +
-  geom_line(
-    aes(ref_date, headcount, color = occupation_group)
-  ) +
-  labs(
-    x = "Year",
-    y = "Headcount"
+  plot_line(
+    "ref_date",
+    "headcount",
+    group_col = "occupation_group",
+    x_lab = "Time",
+    y_lab = "Headcount"
   ) +
   theme(
     legend.position = "bottom"
@@ -816,10 +810,11 @@ wagebill <- pry_contracts_judicial_real |>
   collect()
 
 wagebill |>
-  plot_trend(
-    group_col = c("ref_date"),
+  plot_line(
+    x_col = "ref_date",
+    x_lab = "Year",
     y_col = "wagebill",
-    y_label = "Wagebill (real ₲, Dec 2021)"
+    y_lab = "Wagebill (real ₲, Dec 2021)"
   ) +
   coord_cartesian(
     ylim = c(0, NA)
@@ -942,18 +937,11 @@ wagebill_by_occupation_group |>
 ```{r}
 #| label: wagebill-growth
 wagebill |>
-  plot_trend(
-    group_col = c("ref_date"),
+  plot_change(
+    x_col = "ref_date",
+    x_lab = "Year",
     y_col = "wagebill_growth",
-    y_label = "Wagebill Growth Rate"
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 0.1)
-  ) +
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    color = "gray"
+    y_lab = "Wagebill Growth Rate"
   )
 ```
 
@@ -966,33 +954,12 @@ wagebill_by_occupation_group |>
     !is.na(wagebill_growth) &
       occupation_group != "Otros"
   ) |>
-  plot_trend(
-    group_col = "occupation_group",
+  plot_change(
+    x_col = "ref_date",
+    x_lab = "Year",
     y_col = "wagebill_growth",
-    y_label = "Wagebill Growth Rate"
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 0.1)
-  ) +
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    color = "gray"
-  ) +
-  theme(
-    legend.position = "bottom"
-  ) +
-  ggthemes::scale_color_solarized() +
-  guides(
-    color = guide_legend(
-      title = "Occupation Group",
-      title.position = "top",
-      ncol = 2,
-      override.aes = list(linewidth = 6)
-    )
-  ) +
-  facet_wrap(
-    vars(occupation_group)
+    y_lab = "Wagebill Growth Rate",
+    group_col = "occupation_group"
   )
 ```
 
@@ -1017,31 +984,12 @@ wagebill_salary |>
         "Allowances"
       )
   ) |>
-  plot_trend(
-    group_col = c("component"),
+  plot_change(
+    x_col = "ref_date",
+    x_lab = "Year",
     y_col = "growth_rate",
-    y_label = "Wagebill Growth Rate"
-  ) +
-  scale_y_continuous(
-    labels = scales::percent_format(accuracy = 0.1)
-  ) +
-  geom_hline(
-    yintercept = 0,
-    linetype = "dashed",
-    color = "gray"
-  ) +
-  scale_color_manual(
-    name = "Salary Component",
-    values = c(
-      "Base Salary" = "#202d85",
-      "Allowances" = "#de4500"
-    )
-  ) +
-  facet_wrap(
-    vars(component)
-  ) +
-  theme(
-    legend.position = "none"
+    y_lab = "Wagebill Growth Rate",
+    group_col = "component"
   )
 ```
 
