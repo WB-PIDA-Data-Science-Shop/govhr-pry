@@ -3,10 +3,10 @@ title: "JUPITER Paraguay"
 subtitle: "Workforce and Wage Bill Analytics"
 author: "Galileu Kim"
 format:
-  revealjs:
+  pptx:
     slide-number: true
-    width: 1600
-    height: 900
+    width: 1500
+    height: 1000
     embed-resources: true
     fig-width: 9
     fig-height: 6
@@ -55,10 +55,6 @@ source(
 
 source(
   here::here("R", "occupation.R")
-)
-
-source(
-  here::here("R", "plot.R")
 )
 
 set.seed(2026)
@@ -134,11 +130,12 @@ headcount <- pry_contracts_judicial |>
   collect()
 
 headcount |>
-  plot_line(
-    x_col = "ref_date",
-    y_col = "headcount",
-    x_lab = "Time",
-    y_lab = "Headcount"
+  ggplot() +
+  geom_line(
+    aes(
+      ref_date,
+      headcount
+    )
   ) +
   scale_y_continuous(
     labels = scales::comma_format()
@@ -157,32 +154,36 @@ headcount |>
 ```{r}
 #| label: headcount-by-occupation-group
 headcount_by_occupation_group <- pry_contracts_judicial |>
+  filter(
+    occupation_group != "Otros"
+  ) |>
   compute_headcount(
-    group_cols = c("occupation_group")
+    group_cols = c("occupation_group"),
+    reference_group_cols = c("ref_date")
   ) |>
   collect()
 
 headcount_by_occupation_group |>
-  filter(
-    occupation_group != "Otros"
-  ) |>
-  plot_line(
+  govhr::plot_area(
     "ref_date",
-    "headcount",
-    group_col = "occupation_group",
+    "share_headcount",
+    fill_col = "occupation_group",
     x_lab = "Time",
-    y_lab = "Headcount"
+    y_lab = "Share of Headcount"
   ) +
   theme(
     legend.position = "bottom"
   ) +
-  scale_color_manual(
+  scale_fill_manual(
     name = "Occupation Group",
     values = c(
       "Miembro de Tribunal" = "#202d85",
       "Juez de Primera Instancia" = "#de4500",
       "Juez de Paz" = "#f2a541"
     )
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format()
   ) +
   guides(
     color = guide_legend(
@@ -192,9 +193,71 @@ headcount_by_occupation_group |>
     )
   )
 ```
+## Headcount by contract tyle
+
+```{r}
+#| label: headcount-by-contract-type
+headcount_by_contract_type <- pry_contracts_judicial |>
+  compute_headcount(
+    group_cols = c("contract_type")
+  ) |>
+  collect()
+
+headcount_by_contract_type |>
+  govhr::plot_area(
+    x = "ref_date",
+    y = "share_headcount",
+    fill_col = "contract_type",
+    x_lab = "Year",
+    y_lab = "Share of Headcount"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format()
+  ) +
+  scale_fill_manual(
+    name = "Contract Type",
+    values = c(
+      "permanent" = "#202d85",
+      "fixed-term" = "#de4500"
+    )
+  )
+```
+
+## Headcount by contract type and occupation group
+
+```{r}
+#| label: headcount-by-contract-type-and-occupation-group
+headcount_by_contract_type_and_occupation_group <- pry_contracts_judicial |>
+  compute_headcount(
+    group_cols = c("contract_type"),
+    reference_group_cols = c("occupation_group", "ref_date")
+  ) |>
+  collect()
+
+headcount_by_contract_type_and_occupation_group |>
+  govhr::plot_area(
+    x = "ref_date",
+    y = "share_headcount",
+    fill_col = "contract_type",
+    x_lab = "Year",
+    y_lab = "Share of Headcount"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format()
+  ) +
+  scale_fill_manual(
+    name = "Contract Type",
+    values = c(
+      "permanent" = "#202d85",
+      "fixed-term" = "#de4500"
+    )
+  ) +
+  facet_wrap(
+    vars(occupation_group)
+  )
+```
 
 ## Headcount by age group
-
 ```{r}
 #| label: headcount-by-age-group
 headcount_by_age <- pry_personnel |>
@@ -226,12 +289,12 @@ headcount_by_age_group <- headcount_by_age |>
   )
 
 headcount_by_age_group |>
-  plot_area(
-    x = ref_date,
-    y = share_headcount,
-    fill = age_group,
-    xlab = "Year",
-    ylab = "Share of Headcount"
+  govhr::plot_area(
+    x = "ref_date",
+    y = "share_headcount",
+    fill_col = "age_group",
+    x_lab = "Year",
+    y_lab = "Share of Headcount"
   ) +
   scale_y_continuous(
     labels = scales::percent_format()
@@ -264,12 +327,12 @@ headcount_by_gender <- pry_personnel |>
   collect()
 
 headcount_by_gender |>
-  plot_area(
-    x = ref_date,
-    y = share_headcount,
-    fill = gender,
-    xlab = "Year",
-    ylab = "Share of Headcount"
+  govhr::plot_area(
+    x = "ref_date",
+    y = "share_headcount",
+    fill_col = "gender",
+    x_lab = "Year",
+    y_lab = "Share of Headcount"
   ) +
   scale_y_continuous(
     labels = scales::percent_format()
@@ -291,8 +354,6 @@ headcount_by_gender |>
 
 ```{r}
 #| label: headcount-by-gender-occupation-group
-#| fig-width: 12
-#| fig-height: 8
 headcount_by_gender_occupation <- pry_personnel |>
   inner_join(
     pry_contracts_judicial |>
@@ -309,12 +370,12 @@ headcount_by_gender_occupation <- pry_personnel |>
   )
 
 headcount_by_gender_occupation |>
-  plot_area(
-    x = ref_date,
-    y = share_headcount,
-    fill = gender,
-    xlab = "Year",
-    ylab = "Share of Headcount"
+  govhr::plot_area(
+    x = "ref_date",
+    y = "share_headcount",
+    fill_col = "gender",
+    x_lab = "Year",
+    y_lab = "Share of Headcount"
   ) +
   scale_y_continuous(
     labels = scales::percent_format()
@@ -358,7 +419,12 @@ movement <- pry_contracts_judicial |>
   collect()
 
 movement |>
-  plot_movement_joint()
+  govhr::plot_movement(
+    movement_type = "joint"
+  ) +
+  theme(
+    legend.position = "bottom"
+  )
 ```
 
 ## Net movements
@@ -366,15 +432,17 @@ movement |>
 ```{r}
 #| label: movements-net
 movement |>
-  plot_movement_net()
+  govhr::plot_movement(
+    movement_type = "net"
+  )
 ```
 
 ## Hires and separations by occupation group
 
 ```{r}
 #| label: movements-by-occupation-group
-#| fig-width: 12
-#| fig-height: 12
+#| fig-width: 10
+#| fig-height: 10
 movement_by_occupation <- pry_contracts_judicial |>
   left_join(
     pry_personnel |> select(personnel_id, ref_date, employment_status),
@@ -386,8 +454,10 @@ movement_by_occupation <- pry_contracts_judicial |>
   collect()
 
 movement_by_occupation |>
-  plot_movement_joint(
-    group_cols = c("occupation_group")
+  govhr::plot_movement(
+    movement_type = "joint",
+    measurement_type = "rate",
+    group_col = c("occupation_group")
   )
 ```
 
@@ -395,11 +465,11 @@ movement_by_occupation |>
 
 ```{r}
 #| label: net-movements-by-occupation-group
-#| fig-width: 12
-#| fig-height: 12
 movement_by_occupation |>
-  plot_movement_net(
-    group_cols = c("occupation_group")
+  govhr::plot_movement(
+    movement_type = "net",
+    measurement_type = "rate",
+    group_col = c("occupation_group")
   )
 ```
 
@@ -424,7 +494,8 @@ movement_by_age_group <- pry_contracts_judicial |>
   collect()
 
 movement_by_age_group |>
-  plot_movement_joint(
+  govhr::plot_movement(
+    movement_type = "joint",
     group_cols = c("age_group")
   )
 ```
@@ -436,7 +507,8 @@ movement_by_age_group |>
 #| fig-width: 12
 #| fig-height: 8
 movement_by_age_group |>
-  plot_movement_net(
+  govhr::plot_movement(
+    movement_type = "net",
     group_cols = c("age_group")
   )
 ```
@@ -538,7 +610,8 @@ movement_by_gender <- pry_contracts_judicial |>
   collect()
 
 movement_by_gender |>
-  plot_movement_joint(
+  govhr::plot_movement(
+    movement_type = "joint",
     group_cols = c("gender")
   )
 ```
@@ -547,29 +620,78 @@ movement_by_gender |>
 
 ## Transitions across occupations
 
-A random sample of 30 occupations.
-
 ```{r}
 #| label: transitions-by-occupation
 #| fig-width: 18
 #| fig-height: 12
 transitions_occupation <- pry_contracts_judicial |>
+  filter(
+    occupation_group != "Otros"
+  ) |>
   compute_transition(
     id_col = "personnel_id",
     group_col = "occupation"
   ) |>
   collect()
 
-sample_occupation <- transitions_occupation |>
-  distinct(from) |>
-  slice_sample(n = 30) |>
-  pull(from)
-
 transitions_occupation |>
-  filter(
-    from %in% sample_occupation |
-      to %in% sample_occupation
+  plot_transition(
+    weight_col = "transitions",
+    legend = FALSE
+  )
+```
+
+## Transitions across occupations: women
+
+```{r}
+#| label: transitions-by-occupation-women
+#| fig-width: 18
+#| fig-height: 12
+transitions_occupation_women <- pry_contracts_judicial |>
+  left_join(
+    pry_personnel |> select(personnel_id, ref_date, gender),
+    by = c("personnel_id", "ref_date")
   ) |>
+  filter(
+    occupation_group != "Otros" &
+      gender == "FEMENINO"
+  ) |>
+    compute_transition(
+    id_col = "personnel_id",
+    group_col = "occupation"
+  ) |>
+  collect()
+
+transitions_occupation_women |>
+  plot_transition(
+    weight_col = "transitions",
+    legend = FALSE
+  )
+  
+```
+
+## Transitions across occupations: men
+
+```{r}
+#| label: transitions-by-occupation-men
+#| fig-width: 18
+#| fig-height: 12
+transitions_occupation_men <- pry_contracts_judicial |>
+  left_join(
+    pry_personnel |> select(personnel_id, ref_date, gender),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  filter(
+    occupation_group != "Otros" &
+      gender == "MASCULINO"
+  ) |>
+    compute_transition(
+    id_col = "personnel_id",
+    group_col = "occupation"
+  ) |>
+  collect()
+
+transitions_occupation_men |>
   plot_transition(
     weight_col = "transitions",
     legend = FALSE
@@ -608,6 +730,72 @@ transitions_flows <- transitions_occupation_group |>
 
 transitions_flows |>
   plot_transition_flows()
+```
+
+## Transitions in and out of occupation groups: by gender
+
+```{r}
+#| label: transitions-flows-by-occupation-group-and-gender
+transitions_occupation_group_women <- pry_contracts_judicial |>
+  left_join(
+    pry_personnel |> select(personnel_id, ref_date, gender),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  filter(
+    occupation_group != "Otros" &
+      gender == "FEMENINO"
+  ) |>
+    compute_transition(
+    id_col = "personnel_id",
+    group_col = "occupation_group"
+  ) |>
+  collect()
+
+transitions_occupation_group_men <- pry_contracts_judicial |>
+  left_join(
+    pry_personnel |> select(personnel_id, ref_date, gender),
+    by = c("personnel_id", "ref_date")
+  ) |>
+  filter(
+    occupation_group != "Otros" &
+      gender == "MASCULINO"
+  ) |>
+  compute_transition(
+    id_col = "personnel_id",
+    group_col = "occupation_group"
+  ) |>
+  collect()
+
+transition_flows_by_gender <- transitions_occupation_group_women |>
+  mutate(
+    ref_date = lubridate::floor_date(ref_date, unit = "quarter")
+  ) |>
+  govhr::compute_transition_flows() |>
+  mutate(
+    gender = "FEMENINO"
+  ) |>
+  bind_rows(
+    transitions_occupation_group_men |>
+      mutate(
+        ref_date = lubridate::floor_date(ref_date, unit = "quarter")
+      ) |>
+      govhr::compute_transition_flows() |>
+      mutate(
+        gender = "MASCULINO"
+      )
+  )
+
+transition_flows_by_gender |>
+  filter(
+    gender == "FEMENINO"
+  ) |>
+  govhr::plot_transition_flows()
+
+transition_flows_by_gender |>
+  filter(
+    gender == "MASCULINO"
+  ) |>
+  govhr::plot_transition_flows()
 ```
 
 ## Transitions between occupation groups
@@ -815,14 +1003,20 @@ wagebill <- pry_contracts_judicial_real |>
   collect()
 
 wagebill |>
-  plot_line(
-    x_col = "ref_date",
-    x_lab = "Year",
-    y_col = "wagebill",
-    y_lab = "Wagebill (real ₲, Dec 2021)"
+  ggplot(
+    aes(
+      ref_date,
+      wagebill
+    )
   ) +
-  coord_cartesian(
-    ylim = c(0, NA)
+  geom_line() +
+  scale_y_continuous(
+    labels = scales::comma_format(),
+    limits = c(6e10, 1e11)
+  ) +
+  labs(
+    x = "Year",
+    y = "Wagebill (real ₲, Dec 2021)"
   )
 ```
 
@@ -918,17 +1112,27 @@ wagebill_by_occupation_group |>
     !is.na(wagebill) &
       occupation_group != "Otros"
   ) |>
-  plot_trend(
-    group_col = "occupation_group",
-    y_col = "wagebill",
-    y_label = "Wagebill (real ₲, Dec 2021)"
+  govhr::plot_area(
+    x = "ref_date",
+    y = "wagebill",
+    x_lab = "Year",
+    y_lab = "Wagebill (real ₲, Dec 2021)",
+    fill_col = "occupation_group"
+  ) +
+  scale_y_continuous(
+    labels = scales::comma_format()
+  ) +
+  labs(
+    x = "Year",
+    y = "Wagebill (real ₲, Dec 2021)",
+    color = "Occupation Group"
   ) +
   theme(
     legend.position = "bottom"
   ) +
-  ggthemes::scale_color_solarized() +
+  ggthemes::scale_fill_solarized() +
   guides(
-    color = guide_legend(
+    fill = guide_legend(
       title = "Occupation Group",
       title.position = "top",
       ncol = 2,
@@ -1116,6 +1320,41 @@ pry_compensation |>
     group_col = c("ref_date"),
     y_col = "wage",
     y_label = "Average wage"
+  )
+```
+
+## Average wage growth
+
+```{r}
+#| label: wage-growth
+pry_compensation |>
+  plot_change(
+    x_col = "ref_date",
+    x_lab = "Year",
+    y_col = "wage_growth",
+    y_lab = "Average Wage Growth Rate"
+  )
+```
+
+## Average wage by occupation group
+
+```{r}
+#| label: wage-growth-by-occupation-group
+pry_compensation_by_occupation_group <- pry_contracts_judicial_real |>
+  compute_wage(
+    measure_col = "gross_salary_lcu",
+    group_cols = c("occupation_group")
+  ) |>
+  collect()
+
+pry_compensation |>
+  plot_trend(
+    group_col = c("ref_date"),
+    y_col = "wage",
+    y_label = "Average wage"
+  ) +
+  facet_wrap(
+    vars(occupation_group)
   )
 ```
 

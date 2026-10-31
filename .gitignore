@@ -50,3 +50,6 @@ rsconnect/
 
 # Downloaded data
 /data/
+
+# Quarto VS Code extension virtual documents for embedded code cells
+.vdoc.*
