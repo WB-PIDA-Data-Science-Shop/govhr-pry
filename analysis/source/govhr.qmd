@@ -1347,7 +1347,7 @@ pry_compensation_by_occupation_group <- pry_contracts_judicial_real |>
   ) |>
   collect()
 
-pry_compensation |>
+pry_compensation_by_occupation_group |>
   plot_trend(
     group_col = c("ref_date"),
     y_col = "wage",
