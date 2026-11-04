@@ -10,7 +10,7 @@
 # access date: 9/28/2026
 
 sfp_base_url <- "https://datos.sfp.gov.py"
-raw_data_dir <- file.path("data", "data-raw")
+raw_data_dir <- file.path("data", "data-raw", "hr")
 
 # URLs of every monthly funcionarios CSV zip.
 list_funcionarios_urls <- function(base_url = sfp_base_url) {
@@ -58,3 +58,13 @@ funcionarios_urls |>
     download_funcionarios_csv,
     dest_dir = raw_data_dir
   )
+
+# budget -----------------------------------------------------------------
+presupuestos <- readr::read_csv(
+  "https://pyenresultados.rindiendocuentas.gov.py/Documentos/PresupuestoPND_MH.csv"
+)
+
+write_csv(
+  presupuestos,
+  here::here("data", "data-raw", "budget", "pry_budget.csv.gz")
+)

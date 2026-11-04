@@ -14,7 +14,7 @@ source(
 
 # read-in ----------------------------------------------------------------
 funcionarios_files <- fs::dir_ls(
-  "data/data-raw",
+  "data/data-raw/hr",
   regexp = "funcionarios_\\d{4}_\\d{1,2}\\.csv\\.gz$"
 )
 
@@ -40,7 +40,6 @@ years |>
     files = funcionarios_files,
     db_path = db_path
   )
-
   
 # set primary keys -------------------------------------------------------
 con <- DBI::dbConnect(
@@ -63,3 +62,27 @@ DBI::dbExecute(
   con,
   "ALTER TABLE pry_contracts ADD PRIMARY KEY (contract_id, ref_date)"
 )
+
+# budget -----------------------------------------------------------------
+budget_raw <- readr::read_csv(
+  here("data", "data-raw", "budget", "PresupuestoPND_MH.csv")
+)
+
+budget <- budget_raw |>
+  transmute(
+    est_id = codNivelEntidad,
+    est_name_native = NombreEntidad,
+    program_id = IdNegocioProyecto,
+    program_name_native = NombreProyectoActividad,
+    ref_date = lubridate::ymd(paste0(AnioPresupuesto, "-01-01")),
+    budget_lcu = as.numeric(PresupuestoVigente) |>
+      govhr::deflate_to_real(ref_date, "PRY")
+  )
+
+budget %>%
+  DBI::dbWriteTable(
+    con,
+    "pry_budget",
+    .,
+    overwrite = TRUE
+  )
