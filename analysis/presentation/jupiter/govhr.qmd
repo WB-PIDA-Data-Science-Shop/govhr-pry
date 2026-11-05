@@ -192,7 +192,8 @@ headcount_by_occupation_group |>
     )
   )
 ```
-## Headcount by contract tyle
+
+## Headcount by contract type
 
 ```{r}
 #| label: headcount-by-contract-type
@@ -406,7 +407,7 @@ headcount_by_gender_occupation |>
 
 # Movements
 
-## Hires and separations
+## Hires and separations (Count)
 
 ```{r}
 #| label: movements
@@ -425,6 +426,38 @@ movement |>
     legend.position = "bottom"
   )
 ```
+
+## Hires and Separations (Rate)
+
+```{r}
+#| label: movements-rate
+movement |>
+  govhr::plot_movement(
+    movement_type = "joint",
+    measurement_type = "rate"
+  )
+```
+
+```{r}
+#| label: movements
+movement <- pry_contracts_judicial |>
+  mutate(
+    employment_status = "active"
+  ) |>
+  compute_movement(
+
+  ) |>
+  collect()
+
+movement |>
+  govhr::plot_movement(
+    movement_type = "joint"
+  ) +
+  theme(
+    legend.position = "bottom"
+  )
+```
+
 
 ## Net movements
 
@@ -645,7 +678,7 @@ transitions_occupation |>
 ```{r}
 #| label: transitions-by-occupation-women
 #| fig-width: 18
-#| fig-height: 12
+#| fig-height: 16
 transitions_occupation_women <- pry_contracts_judicial |>
   left_join(
     pry_personnel |> select(personnel_id, ref_date, gender),
@@ -664,7 +697,7 @@ transitions_occupation_women <- pry_contracts_judicial |>
 transitions_occupation_women |>
   plot_transition(
     weight_col = "transitions",
-    legend = FALSE
+    legend = TRUE
   )
   
 ```
@@ -674,7 +707,7 @@ transitions_occupation_women |>
 ```{r}
 #| label: transitions-by-occupation-men
 #| fig-width: 18
-#| fig-height: 12
+#| fig-height: 16
 transitions_occupation_men <- pry_contracts_judicial |>
   left_join(
     pry_personnel |> select(personnel_id, ref_date, gender),
@@ -693,7 +726,7 @@ transitions_occupation_men <- pry_contracts_judicial |>
 transitions_occupation_men |>
   plot_transition(
     weight_col = "transitions",
-    legend = FALSE
+    legend = TRUE
   )
 ```
 
@@ -1081,9 +1114,6 @@ wagebill_salary |>
       "Allowances" = "#de4500"
     )
   ) +
-  facet_wrap(
-    vars(component)
-  ) +
   theme(
     legend.position = "none"
   ) +
@@ -1107,8 +1137,15 @@ wagebill_by_occupation_group <- pry_contracts_judicial_real |>
 
 wagebill_by_occupation_group |>
   filter(
-    !is.na(wagebill) &
-      occupation_group != "Otros"
+    !is.na(wagebill)
+  ) |>
+  # other as last factor level
+  mutate(
+    occupation_group = forcats::fct_relevel(
+      occupation_group,
+      "Otros",
+      after = Inf
+    )
   ) |>
   govhr::plot_area(
     x = "ref_date",
@@ -1128,7 +1165,7 @@ wagebill_by_occupation_group |>
   theme(
     legend.position = "bottom"
   ) +
-  ggthemes::scale_fill_solarized() +
+  ggthemes::scale_fill_tableau() +
   guides(
     fill = guide_legend(
       title = "Occupation Group",
@@ -1317,7 +1354,11 @@ pry_compensation |>
   plot_trend(
     group_col = c("ref_date"),
     y_col = "wage",
-    y_label = "Average wage"
+    y_label = "Average wage (real ₲, Dec 2021)"
+  ) +
+  scale_y_continuous(
+    labels = scales::label_number(),
+    limits = c(4e6, 8e6)
   )
 ```
 
@@ -1330,7 +1371,7 @@ pry_compensation |>
     x_col = "ref_date",
     x_lab = "Year",
     y_col = "wage_growth",
-    y_lab = "Average Wage Growth Rate"
+    y_lab = "Growth Rate of Average Wage (real ₲, Dec 2021)"
   )
 ```
 
@@ -1350,9 +1391,22 @@ pry_compensation_by_occupation_group |>
     aes(ref_date, wage)
   ) +
   geom_line() +
+  # add overall average as line
+  geom_line(
+    aes(
+      x = ref_date,
+      y = wage
+    ),
+    data = pry_compensation,
+    linetype = "dashed"
+  ) +
   labs(
     x = "Year",
-    y = "Average Wage"
+    y = "Average Wage (real ₲, Dec 2021)"
+  ) +
+  scale_y_continuous(
+    labels = scales::label_number(),
+    limits = c(0, 2e7)
   ) +
   facet_wrap(
     vars(occupation_group)
@@ -1404,7 +1458,7 @@ pry_wage_by_component |>
   plot_trend(
     group_col = c("component"),
     y_col = "wage",
-    y_label = "Average wage (real ₲, Dec 2021)"
+    y_label = "Average value (real ₲, Dec 2021)"
   ) +
   scale_color_manual(
     name = "Salary Component",
