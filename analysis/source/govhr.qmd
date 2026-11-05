@@ -150,7 +150,6 @@ headcount |>
 ```
 
 ## Headcount by occupation group
-
 ```{r}
 #| label: headcount-by-occupation-group
 headcount_by_occupation_group <- pry_contracts_judicial |>
@@ -949,7 +948,6 @@ transitions_age_group |>
     )
   ) +
   geom_line() +
-  geom_point() +
   scale_x_date(
     date_breaks = "1 year",
     date_labels = "%Y"
@@ -1348,10 +1346,13 @@ pry_compensation_by_occupation_group <- pry_contracts_judicial_real |>
   collect()
 
 pry_compensation_by_occupation_group |>
-  plot_trend(
-    group_col = c("ref_date"),
-    y_col = "wage",
-    y_label = "Average wage"
+  ggplot(
+    aes(ref_date, wage)
+  ) +
+  geom_line() +
+  labs(
+    x = "Year",
+    y = "Average Wage"
   ) +
   facet_wrap(
     vars(occupation_group)

@@ -2744,7 +2744,7 @@
     },
     "govhr": {
       "Package": "govhr",
-      "Version": "0.4.2",
+      "Version": "0.4.4",
       "Source": "GitHub",
       "Type": "Package",
       "Title": "Clean and analyze data to inform human resource management",
@@ -2759,9 +2759,7 @@
         "rlang",
         "tidyr",
         "lubridate",
-        "ggplot2",
-        "ggrepel",
-        "ggthemes",
+        "ggplot2 (>= 4.0.0)",
         "data.table",
         "stringr",
         "scales",
@@ -2772,6 +2770,7 @@
         "httr",
         "janitor",
         "jsonlite",
+        "lifecycle",
         "purrr",
         "rmarkdown",
         "tidyselect",
@@ -2781,7 +2780,6 @@
         "tidygraph",
         "ggraph",
         "ggiraph",
-        "igraph",
         "fixest",
         "forcats",
         "ggstats"
@@ -2792,6 +2790,7 @@
         "duckdb",
         "readr",
         "testthat (>= 3.0.0)",
+        "withr",
         "reactable"
       ],
       "Config/testthat/edition": "3",
@@ -2810,7 +2809,7 @@
       "RemoteUsername": "WB-PIDA-Data-Science-Shop",
       "RemoteRepo": "govhr",
       "RemoteRef": "main",
-      "RemoteSha": "c939a99d66515f9561824520dd8b43ee5d7964ec"
+      "RemoteSha": "3b23b1b801b7d4e77544176688ecdfca4bf39943"
     },
     "govhrapp": {
       "Package": "govhrapp",
