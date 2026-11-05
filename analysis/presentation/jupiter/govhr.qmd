@@ -4,9 +4,8 @@ subtitle: "Workforce and Wage Bill Analytics"
 author: "Galileu Kim"
 format:
   pptx:
+    reference-doc: govhr-quarto-template.pptx
     slide-number: true
-    width: 1500
-    height: 1000
     embed-resources: true
     fig-width: 9
     fig-height: 6
@@ -58,6 +57,26 @@ source(
 )
 
 set.seed(2026)
+
+# one shared mapping so each occupation group keeps the same colour on every
+# slide, whichever aesthetic it is mapped to
+occupation_group_colors <- c(
+  "Juez de Paz" = "#202d85",
+  "Juez de Primera Instancia" = "#de4500",
+  "Miembro de Tribunal" = "#f2a541",
+  "Otros" = "#8c8c8c"
+)
+
+# separate fill and colour scales rather than one scale over both aesthetics,
+# because a combined scale takes its guide from `colour` and silently ignores
+# guides(fill = ...)
+scale_fill_occupation_group <- function(...) {
+  scale_fill_manual(values = occupation_group_colors, ...)
+}
+
+scale_colour_occupation_group <- function(...) {
+  scale_colour_manual(values = occupation_group_colors, ...)
+}
 
 con <- DBI::dbConnect(
   duckdb::duckdb(),
@@ -173,13 +192,8 @@ headcount_by_occupation_group |>
   theme(
     legend.position = "bottom"
   ) +
-  scale_fill_manual(
-    name = "Occupation Group",
-    values = c(
-      "Miembro de Tribunal" = "#202d85",
-      "Juez de Primera Instancia" = "#de4500",
-      "Juez de Paz" = "#f2a541"
-    )
+  scale_fill_occupation_group(
+    name = "Occupation Group"
   ) +
   scale_y_continuous(
     labels = scales::percent_format()
@@ -437,27 +451,6 @@ movement |>
     measurement_type = "rate"
   )
 ```
-
-```{r}
-#| label: movements
-movement <- pry_contracts_judicial |>
-  mutate(
-    employment_status = "active"
-  ) |>
-  compute_movement(
-
-  ) |>
-  collect()
-
-movement |>
-  govhr::plot_movement(
-    movement_type = "joint"
-  ) +
-  theme(
-    legend.position = "bottom"
-  )
-```
-
 
 ## Net movements
 
@@ -758,10 +751,10 @@ transitions_flows <- transitions_occupation_group |>
   mutate(
     ref_date = lubridate::floor_date(ref_date, unit = "quarter")
   ) |>
-  compute_transition_flows()
+  govhr::compute_transition_flows()
 
 transitions_flows |>
-  plot_transition_flows()
+   govhr::plot_transition_flows()
 ```
 
 ## Transitions in and out of occupation groups: by gender
@@ -860,14 +853,11 @@ transitions_occupation_group |>
   scale_y_continuous(
     labels = scales::comma
   ) +
-  scale_fill_manual(
-    name = "Original occupation",
-    values = c(
-      "Juez de Paz" = "#202d85",
-      "Juez de Primera Instancia" = "#de4500",
-      "Miembro de Tribunal" = "#f2a541",
-      "Otros" = "#6c757d"
-    )
+  scale_fill_occupation_group(
+    name = "Original occupation"
+  ) +
+  theme(
+    legend.position = "none"
   ) +
   labs(
     y = "Transitions"
@@ -927,14 +917,8 @@ transitions_occupation_gender |>
   scale_y_continuous(
     labels = scales::percent_format(accuracy = 0.1)
   ) +
-  scale_fill_manual(
-    name = "Original occupation",
-    values = c(
-      "Juez de Paz" = "#202d85",
-      "Juez de Primera Instancia" = "#de4500",
-      "Miembro de Tribunal" = "#f2a541",
-      "Otros" = "#6c757d"
-    )
+  scale_fill_occupation_group(
+    name = "Original occupation"
   ) +
   labs(
     y = "Transitions"
@@ -945,58 +929,6 @@ transitions_occupation_gender |>
   facet_wrap(
     vars(gender),
     ncol = 1
-  )
-```
-
-## Transitions across age groups
-
-```{r}
-#| label: transitions-by-age-group
-#| fig-width: 12
-#| fig-height: 8
-transitions_age_group <- pry_contracts_judicial |>
-  left_join(
-    pry_personnel |> select(personnel_id, ref_date, age),
-    by = c("personnel_id", "ref_date")
-  ) |>
-  filter(
-    !is.na(age)
-  ) |>
-  classify_age_group() |>
-  compute_transition(
-    id_col = "personnel_id",
-    group_col = "age_group"
-  ) |>
-  collect()
-
-transitions_age_group |>
-  mutate(
-    from_to = paste(from, to, sep = " -> ")
-  ) |>
-  ggplot(
-    aes(
-      ref_date,
-      transitions,
-      color = from_to
-    )
-  ) +
-  geom_line() +
-  scale_x_date(
-    date_breaks = "1 year",
-    date_labels = "%Y"
-  ) +
-  scale_color_manual(
-    name = "Transition",
-    values = c(
-      "<30 -> 30-39" = "#202d85",
-      "30-39 -> 40-49" = "#de4500",
-      "40-49 -> 50-59" = "#f2a541",
-      "50-59 -> 60+" = "#6c757d"
-    )
-  ) +
-  facet_wrap(
-    vars(from_to),
-    ncol = 2
   )
 ```
 
@@ -1165,7 +1097,7 @@ wagebill_by_occupation_group |>
   theme(
     legend.position = "bottom"
   ) +
-  ggthemes::scale_fill_tableau() +
+  scale_fill_occupation_group() +
   guides(
     fill = guide_legend(
       title = "Occupation Group",
@@ -1338,7 +1270,7 @@ wagebill_salary |>
   )
 ```
 
-# Compensation
+# Wages
 
 ## Average wage
 
